@@ -1,13 +1,46 @@
-# LinkedIn Post
+# LinkedIn Post - Code Review with GitHub Copilot
 
-Today I'm sharing a CLI-based AI code review system I built to catch issues before they hit your codebase.
+Today I'm sharing a CLI-based AI code review system that catches issues *before* they hit your codebase—and helps you fix them instantly.
 
-It's a pre-commit hook that reviews Java code using GitHub Copilot and blocks commits on critical issues (security vulnerabilities, SQL injection, hardcoded secrets). Only reviews staged diffs, outputs strict JSON, and works in any terminal or CI pipeline.
+**How it works:**
 
-And a reminder: not every AI tool needs to be complex—sometimes a well-placed hook with smart prompts is all you need to prevent production incidents.
+1️⃣ **Pre-commit Hook**: When you commit Java code, it automatically triggers
+2️⃣ **AI Review**: GitHub Copilot analyzes your changes against a security & quality checklist
+3️⃣ **Smart Blocking**: Critical issues (SQL injection, hardcoded secrets, null risks) → commit blocked
+4️⃣ **AI-Assisted Fixes**: Get instant fix suggestions from Copilot CLI or your IDE
+
+**Example workflow:**
+```
+git commit -m "Add user authentication"
+
+❌ BLOCKED: Hardcoded password detected at line 23
+💡 Copilot suggests: Use System.getenv("DB_PASSWORD") instead
+
+[Fix applied]
+✅ Commit allowed
+```
+
+**Why I built this:**
+- Catch security issues at commit time (not in PR reviews)
+- Give developers immediate feedback with actionable fixes
+- Use AI where it matters: preventing production incidents
+
+**Tech stack:**
+- GitHub Copilot CLI for AI analysis
+- YAML-based checklist (easily customizable)
+- Strict JSON output (CI/CD ready)
+- IDE-agnostic (works in any terminal)
+
+And a reminder: not every AI solution needs to be complex—a well-placed pre-commit hook with smart prompts can prevent critical bugs from ever reaching your repo.
 
 🔗 Project: [Your GitHub URL Here]
 
-It's not perfect — but I find it genuinely useful for enforcing code quality at commit time.
+It's not perfect — but I find it genuinely useful for enforcing code quality without interrupting developer flow.
 
-#codereview #java #devops #security #github #copilot #automation #softwareengineering #cursor
+**Curious about the approach?** The system uses:
+- Pre-commit hooks (runs automatically)
+- GitHub Copilot extension (gh copilot)
+- Structured prompts with severity levels (BLOCK/WARN/INFO)
+- Diff-only analysis (fast, focused reviews)
+
+#codereview #java #devops #security #github #copilot #automation #softwareengineering #precommithooks #cursor

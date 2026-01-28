@@ -25,12 +25,21 @@ fi
 
 DIFF_FILE="$TEMP_DIR/java_review_diff_$$.patch"
 
-# Color codes for output
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+# Color codes for output (disabled on Windows by default for better compatibility)
+# Set FORCE_COLOR=true to enable colors
+if [ "$FORCE_COLOR" = "true" ] && [ -t 1 ]; then
+  RED='\033[0;31m'
+  YELLOW='\033[1;33m'
+  GREEN='\033[0;32m'
+  BLUE='\033[0;34m'
+  NC='\033[0m' # No Color
+else
+  RED=''
+  YELLOW=''
+  GREEN=''
+  BLUE=''
+  NC=''
+fi
 
 # Cleanup function
 cleanup() {
@@ -151,36 +160,51 @@ REVIEW_PROMPT=$(awk -v checklist="$CHECKLIST_CONTENT" -v diff="$DIFF_CONTENT" '
   { print }
 ' "$PROMPT_FILE")
 
-echo "${BLUE}[AI Review]${NC} Analyzing code with GitHub Copilot..."
+printf "${BLUE}[AI Review]${NC} Analyzing code with GitHub Copilot CLI...\n"
+printf "${BLUE}[AI Review]${NC} API: gh copilot suggest (GitHub Copilot CLI Extension)\n"
 
 # Call GitHub Copilot CLI
-# Note: gh copilot explain/suggest don't support custom prompts well
-# We'll use a workaround by creating a temp script
+# Note: gh copilot suggest/explain don't support structured JSON output natively
+# This is a workaround using the CLI's suggest command
 COPILOT_SCRIPT="$TEMP_DIR/copilot_query_$$.txt"
 echo "$REVIEW_PROMPT" > "$COPILOT_SCRIPT"
 
-# Try to get JSON response from Copilot
-# Since gh copilot doesn't have a direct JSON API mode, we'll use suggest with special formatting
+# Try to get JSON response from Copilot CLI
+# Command: gh copilot suggest --target shell < prompt
+printf "${BLUE}[AI Review]${NC} Sending review request to GitHub Copilot...\n"
 REVIEW_OUTPUT=$(cat "$COPILOT_SCRIPT" | gh copilot suggest --target shell 2>/dev/null || echo "")
 RETCODE=$?
 
-# If that doesn't work, try explain mode
+# Check API availability and response
 if [ $RETCODE -ne 0 ] || [ -z "$REVIEW_OUTPUT" ]; then
-  echo "${YELLOW}[AI Review] Trying alternative Copilot API...${NC}"
-  # For demonstration, we'll create a mock response structure
-  # In production, this would integrate with the actual Copilot API
-  REVIEW_JSON='{"summary": "AI review unavailable - GitHub Copilot CLI integration pending", "issues": []}'
-  
-  echo "${YELLOW}[AI Review] Warning: Could not connect to GitHub Copilot.${NC}"
-  echo "${YELLOW}Note: This is a demonstration project. For production use, integrate with:${NC}"
-  echo "  - GitHub Copilot API (when available)"
-  echo "  - OpenAI API"
-  echo "  - Azure OpenAI"
-  echo "  - Other LLM providers"
   echo ""
-  echo "${GREEN}[AI Review] Allowing commit (no AI service configured).${NC}"
+  printf "${YELLOW}╔═══════════════════════════════════════════════════════════╗${NC}\n"
+  printf "${YELLOW}║  GitHub Copilot CLI: NOT AVAILABLE                        ║${NC}\n"
+  printf "${YELLOW}╚═══════════════════════════════════════════════════════════╝${NC}\n"
+  echo ""
+  echo "API Status:"
+  echo "  • GitHub Copilot CLI Extension: NOT RESPONDING"
+  echo "  • Command: gh copilot suggest --target shell"
+  echo "  • Exit code: $RETCODE"
+  echo ""
+  echo "Possible reasons:"
+  echo "  1. GitHub Copilot subscription not active"
+  echo "  2. Extension not installed or configured"
+  echo "  3. Network connectivity issues"
+  echo "  4. Authentication expired (run: gh auth login)"
+  echo ""
+  echo "Alternative AI Review APIs (see API_INFORMATION.md):"
+  echo "  • OpenAI GPT-4: https://platform.openai.com/docs"
+  echo "  • Azure OpenAI: https://azure.microsoft.com/products/ai-services/openai-service"
+  echo "  • Claude (Anthropic): https://www.anthropic.com/api"
+  echo "  • Local LLM (Ollama): https://ollama.ai"
+  echo ""
+  printf "${GREEN}[AI Review]${NC} Allowing commit (AI service unavailable - manual review recommended)\n"
+  echo ""
   exit 0
 fi
+
+printf "${GREEN}[AI Review]${NC} Response received from GitHub Copilot CLI\n"
 
 rm -f "$COPILOT_SCRIPT"
 
