@@ -1,0 +1,31 @@
+# Java Code Review Checklist
+# Each rule must have: id, description, severity (BLOCK | WARN | INFO)
+
+rules:
+  - id: hardcoded-secret
+    description: "Detect hardcoded secrets, passwords, API keys, or credentials."
+    severity: BLOCK
+  - id: sql-injection
+    description: "Check for SQL queries that do not use PreparedStatement or parameterized queries."
+    severity: BLOCK
+  - id: npe-risk
+    description: "Identify code that may cause NullPointerException."
+    severity: BLOCK
+  - id: unsafe-deserialization
+    description: "Detect unsafe deserialization of untrusted data."
+    severity: BLOCK
+  - id: thread-safety
+    description: "Check for thread safety issues in shared mutable state."
+    severity: BLOCK
+  - id: exception-handling
+    description: "Ensure exceptions are handled properly and not silently ignored."
+    severity: WARN
+  - id: performance-collections
+    description: "Detect inefficient collection usage or performance anti-patterns."
+    severity: WARN
+  - id: naming-conventions
+    description: "Check for violations of Java naming conventions."
+    severity: INFO
+  - id: missing-tests
+    description: "Flag new logic without corresponding tests."
+    severity: WARN
