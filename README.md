@@ -17,6 +17,39 @@ A portable, CLI-only AI code review system for Java projects using GitHub Copilo
 
 ---
 
+## Security and Privacy Notice
+
+> **Important: Responsible AI Usage**
+>
+> This tool sends your code to external AI services (GitHub Copilot). Before using, understand the data flow:
+
+```mermaid
+flowchart LR
+    A[Your Code] --> B[git diff]
+    B --> C[Pre-commit Hook]
+    C --> D[GitHub Copilot API]
+    D --> E[AI Analysis]
+    E --> F[JSON Response]
+    F --> G[Block/Allow Decision]
+```
+
+> **Do NOT send to AI:**
+> - Hardcoded secrets, API keys, or passwords (even test values)
+> - Proprietary algorithms or trade secrets
+> - Customer PII or HIPAA/GDPR protected data
+> - Internal infrastructure details (IPs, hostnames, internal paths)
+>
+> **Mitigation Strategies:**
+> 1. Use `.gitignore` to exclude sensitive files
+> 2. Use environment variables for all secrets
+> 3. Review staged files before committing: `git diff --cached`
+> 4. Consider local LLMs (Ollama) for sensitive codebases
+> 5. Set `AI_REVIEW_ENABLED=false` for sensitive commits
+
+For detailed security guidance, see [docs/SECURITY.md](docs/SECURITY.md).
+
+---
+
 ## Quick Start
 
 ### 1. Prerequisites
@@ -422,11 +455,19 @@ echo "✅ Code review passed"
 ├── pre-commit.sh                          # Pre-commit hook template
 ├── install.sh                             # Automated installation script
 ├── .ai/
-│   ├── java_code_review_checklist.yaml   # Review rules (YAML)
-│   ├── java_review_prompt.txt            # AI prompt template
+│   ├── java_code_review_checklist.yaml   # Review rules (YAML, OWASP-referenced)
+│   ├── java_review_prompt.txt            # AI prompt template with security boundaries
 │   └── last_review.json                  # Last review results (generated)
+├── docs/
+│   ├── ARCHITECTURE.md                   # System design and data flow
+│   ├── SECURITY.md                       # Security and privacy considerations
+│   ├── CUSTOMIZATION.md                  # Extension and customization guide
+│   └── linkedin_post.md                  # Project announcement post
 ├── examples/
-│   └── test.java                         # Example file with issues
+│   ├── test.java                         # Example file with issues
+│   ├── example_review_output.json        # Sample AI review output
+│   └── README.md                         # Examples documentation
+├── LICENSE                               # MIT License
 └── README.md                             # This file
 ```
 

@@ -5,6 +5,33 @@
 
 set -e
 
+# Add common Windows paths for tools (PowerShell/npm installed tools)
+COPILOT_FULL_PATH=""
+JQ_FULL_PATH=""
+
+if [ -d "/c/Users" ]; then
+  # Running on Windows with Git Bash
+  USER_HOME=$(echo ~)
+  APPDATA=$(cmd.exe //c "echo %APPDATA%" 2>/dev/null | tr -d '\r')
+  LOCALAPPDATA=$(cmd.exe //c "echo %LOCALAPPDATA%" 2>/dev/null | tr -d '\r')
+  
+  # Find copilot.cmd (convert Windows path to Git Bash path)
+  if [ -d "$APPDATA/npm" ]; then
+    if [ -f "$APPDATA/npm/copilot.cmd" ]; then
+      COPILOT_FULL_PATH="$APPDATA/npm/copilot.cmd"
+      export PATH="$APPDATA/npm:$PATH"
+    fi
+  fi
+  
+  # Find jq.exe
+  if [ -d "$LOCALAPPDATA/Microsoft/WinGet/Packages" ]; then
+    JQ_FULL_PATH=$(find "$LOCALAPPDATA/Microsoft/WinGet/Packages" -name "jq.exe" 2>/dev/null | head -1)
+    if [ -n "$JQ_FULL_PATH" ]; then
+      export PATH="$(dirname "$JQ_FULL_PATH"):$PATH"
+    fi
+  fi
+fi
+
 # Configuration
 AI_DIR=".ai"
 CHECKLIST_FILE="$AI_DIR/java_code_review_checklist.yaml"
@@ -13,12 +40,15 @@ LAST_REVIEW_FILE="$AI_DIR/last_review.json"
 MAX_DIFF_SIZE=20000 # bytes
 
 # Use temporary directory that works across platforms
-if [ -n "$TMPDIR" ]; then
+# On Windows, use .ai/temp to avoid path issues
+if [ -d "/c/Users" ]; then
+  TEMP_DIR="$AI_DIR/temp"
+  mkdir -p "$TEMP_DIR"
+elif [ -n "$TMPDIR" ]; then
   TEMP_DIR="$TMPDIR"
 elif [ -d "/tmp" ]; then
   TEMP_DIR="/tmp"
 else
-  # Fallback for Windows/systems without /tmp
   TEMP_DIR="$AI_DIR/temp"
   mkdir -p "$TEMP_DIR"
 fi
@@ -94,22 +124,31 @@ check_dependency() {
 }
 
 echo "${BLUE}[AI Review]${NC} Checking dependencies..."
-if ! check_dependency "gh"; then
-  exit 1
+
+# Check for copilot
+if [ -d "/c/Users" ]; then
+  # On Windows, use PowerShell to check for copilot
+  if powershell.exe -Command "Get-Command copilot -ErrorAction SilentlyContinue" >/dev/null 2>&1; then
+    echo "${BLUE}[AI Review]${NC} Found copilot (via PowerShell)"
+  else
+    echo "${RED}[AI Review] Error: Required command 'copilot' not found.${NC}"
+    echo ""
+    echo "GitHub Copilot CLI is required. Install it:"
+    echo "  - npm: npm install -g @githubnext/github-copilot-cli"
+    echo ""
+    echo "After installation, authenticate with: copilot auth"
+    echo ""
+    echo "To bypass this check temporarily, use: git commit --no-verify"
+    exit 1
+  fi
+else
+  # On Unix, check directly
+  if ! check_dependency "copilot"; then
+    exit 1
+  fi
 fi
 
 if ! check_dependency "jq"; then
-  exit 1
-fi
-
-# Check if gh copilot extension is installed
-if ! gh extension list | grep -q "github/gh-copilot"; then
-  echo "${RED}[AI Review] Error: GitHub Copilot CLI extension not installed.${NC}"
-  echo ""
-  echo "Install it with: gh extension install github/gh-copilot"
-  echo "Then authenticate if needed: gh auth login"
-  echo ""
-  echo "To bypass this check temporarily, use: git commit --no-verify"
   exit 1
 fi
 
@@ -144,6 +183,33 @@ if [ "$DIFF_SIZE" -gt "$MAX_DIFF_SIZE" ]; then
   echo "${YELLOW}[AI Review] Warning: Diff truncated to $MAX_DIFF_SIZE bytes for review.${NC}"
 fi
 
+# Security check: Warn if diff may contain sensitive data
+# Skip this check if SKIP_SENSITIVE_CHECK=true
+if [ "$SKIP_SENSITIVE_CHECK" != "true" ]; then
+  if grep -qiE "(password\s*=|secret\s*=|api[_-]?key\s*=|token\s*=|credential|private[_-]?key)" "$DIFF_FILE"; then
+    echo ""
+    echo "${YELLOW}╔═══════════════════════════════════════════════════════════╗${NC}"
+    echo "${YELLOW}║  SECURITY WARNING: Potential sensitive data detected      ║${NC}"
+    echo "${YELLOW}╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo ""
+    echo "Your staged code may contain sensitive keywords (password, secret, api_key, etc.)."
+    echo "This code will be sent to an external AI service for review."
+    echo ""
+    echo "Options:"
+    echo "  1. Review your staged changes: git diff --cached"
+    echo "  2. Use environment variables instead of hardcoded values"
+    echo "  3. Skip this check: SKIP_SENSITIVE_CHECK=true git commit ..."
+    echo "  4. Skip AI review entirely: git commit --no-verify"
+    echo ""
+    printf "Continue with AI review? (y/n): "
+    read -r response
+    if [ "$response" != "y" ] && [ "$response" != "Y" ]; then
+      echo "${BLUE}[AI Review]${NC} Commit aborted by user. Review your code for sensitive data."
+      exit 1
+    fi
+  fi
+fi
+
 DIFF_CONTENT=$(cat "$DIFF_FILE")
 CHECKLIST_CONTENT=$(cat "$CHECKLIST_FILE")
 
@@ -160,20 +226,59 @@ REVIEW_PROMPT=$(awk -v checklist="$CHECKLIST_CONTENT" -v diff="$DIFF_CONTENT" '
   { print }
 ' "$PROMPT_FILE")
 
-printf "${BLUE}[AI Review]${NC} Analyzing code with GitHub Copilot CLI...\n"
-printf "${BLUE}[AI Review]${NC} API: gh copilot suggest (GitHub Copilot CLI Extension)\n"
+printf "${BLUE}[AI Review]${NC} Sending code to Copilot CLI for analysis...\n"
 
-# Call GitHub Copilot CLI
-# Note: gh copilot suggest/explain don't support structured JSON output natively
-# This is a workaround using the CLI's suggest command
-COPILOT_SCRIPT="$TEMP_DIR/copilot_query_$$.txt"
-echo "$REVIEW_PROMPT" > "$COPILOT_SCRIPT"
+# Call Standalone Copilot CLI
 
-# Try to get JSON response from Copilot CLI
-# Command: gh copilot suggest --target shell < prompt
-printf "${BLUE}[AI Review]${NC} Sending review request to GitHub Copilot...\n"
-REVIEW_OUTPUT=$(cat "$COPILOT_SCRIPT" | gh copilot suggest --target shell 2>/dev/null || echo "")
-RETCODE=$?
+# On Windows (Git Bash), use PowerShell script
+if [ -d "/c/Users" ]; then
+  mkdir -p "$AI_DIR/temp"
+  
+  # Save diff to file  
+  DIFF_FILE_PS="$AI_DIR/temp/review_diff_$$.txt"
+  echo "$DIFF_CONTENT" > "$DIFF_FILE_PS"
+  
+  # Create a self-contained PowerShell script that does everything
+  PS_RUNNER="$AI_DIR/temp/run_review_$$.ps1"
+  cat > "$PS_RUNNER" << 'PSEOF'
+param([string]$DiffFile)
+
+$diffContent = Get-Content -LiteralPath $DiffFile -Raw -ErrorAction SilentlyContinue
+if (-not $diffContent) { Write-Output "Error: Could not read diff file"; exit 1 }
+
+# Escape special characters and build a clean single-line prompt  
+$cleanDiff = $diffContent -replace "`r`n", " " -replace "`n", " " -replace '"', "'" -replace '\s+', ' '
+$cleanDiff = $cleanDiff.Substring(0, [Math]::Min(2000, $cleanDiff.Length))
+
+$prompt = "Review this Java code for security issues. Return JSON: {issues:[{severity:CRITICAL,type:string,description:string}]}. Code: $cleanDiff"
+
+# Call copilot with properly escaped argument using --% to stop parsing
+try {
+    $argList = @('-p', $prompt, '--silent', '--allow-all-tools', '--no-color')
+    $result = & copilot @argList 2>&1
+    Write-Output $result
+} catch {
+    Write-Output "Error: $_"
+}
+PSEOF
+
+  # Get Windows paths
+  WIN_DIFF=$(powershell.exe -NoProfile -Command "(Resolve-Path '$DIFF_FILE_PS').Path" 2>/dev/null | tr -d '\r\n')
+  WIN_RUNNER=$(powershell.exe -NoProfile -Command "(Resolve-Path '$PS_RUNNER').Path" 2>/dev/null | tr -d '\r\n')
+  
+  # Run the PowerShell script
+  REVIEW_OUTPUT=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_RUNNER" -DiffFile "$WIN_DIFF" 2>&1)
+  RETCODE=$?
+  
+  rm -f "$DIFF_FILE_PS" "$PS_RUNNER"
+else
+  # On Unix, call copilot directly
+  FULL_PROMPT="$REVIEW_PROMPT
+
+CRITICAL: Output ONLY valid JSON."
+  REVIEW_OUTPUT=$(copilot -p "$FULL_PROMPT" --silent --allow-all-tools --no-color 2>&1 || echo "")
+  RETCODE=$?
+fi
 
 # Check API availability and response
 if [ $RETCODE -ne 0 ] || [ -z "$REVIEW_OUTPUT" ]; then
@@ -183,15 +288,15 @@ if [ $RETCODE -ne 0 ] || [ -z "$REVIEW_OUTPUT" ]; then
   printf "${YELLOW}╚═══════════════════════════════════════════════════════════╝${NC}\n"
   echo ""
   echo "API Status:"
-  echo "  • GitHub Copilot CLI Extension: NOT RESPONDING"
-  echo "  • Command: gh copilot suggest --target shell"
+  echo "  • Standalone GitHub Copilot CLI: NOT RESPONDING"
+  echo "  • Command: copilot -p <prompt> --silent --allow-all-tools"
   echo "  • Exit code: $RETCODE"
   echo ""
   echo "Possible reasons:"
   echo "  1. GitHub Copilot subscription not active"
-  echo "  2. Extension not installed or configured"
+  echo "  2. Copilot CLI not authenticated (run: copilot auth or copilot)"
   echo "  3. Network connectivity issues"
-  echo "  4. Authentication expired (run: gh auth login)"
+  echo "  4. CLI version outdated (run: copilot update)"
   echo ""
   echo "Alternative AI Review APIs (see API_INFORMATION.md):"
   echo "  • OpenAI GPT-4: https://platform.openai.com/docs"
@@ -204,13 +309,20 @@ if [ $RETCODE -ne 0 ] || [ -z "$REVIEW_OUTPUT" ]; then
   exit 0
 fi
 
-printf "${GREEN}[AI Review]${NC} Response received from GitHub Copilot CLI\n"
+# Response received, process it
 
-rm -f "$COPILOT_SCRIPT"
+# Save raw output for debugging
+echo "$REVIEW_OUTPUT" > "$AI_DIR/last_review_raw.txt"
 
 # Try to extract JSON from the response
-# The response might be wrapped in markdown or have explanatory text
-REVIEW_JSON=$(echo "$REVIEW_OUTPUT" | grep -o '{.*}' | head -1 || echo '{"summary": "Parse error", "issues": []}')
+# Copilot often wraps JSON in markdown code blocks: ```json ... ```
+# Method 1: Try to extract from markdown code block
+REVIEW_JSON=$(echo "$REVIEW_OUTPUT" | sed -n '/```json/,/```/p' | sed '1d;$d' | tr -d '\n' || echo "")
+
+# Method 2: If that fails, try simple grep for JSON object
+if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "" ]; then
+  REVIEW_JSON=$(echo "$REVIEW_OUTPUT" | grep -o '{.*}' | head -1 || echo '{"summary": "Parse error", "issues": []}')
+fi
 
 # Save review output
 mkdir -p "$AI_DIR"
@@ -225,9 +337,9 @@ if ! echo "$REVIEW_JSON" | jq -e . >/dev/null 2>&1; then
   exit 0
 fi
 
-# Parse JSON for BLOCK issues
-BLOCK_ISSUES=$(echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="BLOCK")')
-BLOCK_COUNT=$(echo "$REVIEW_JSON" | jq -r '[.issues[] | select(.severity=="BLOCK")] | length')
+# Parse JSON for BLOCK issues (support both BLOCK and CRITICAL severity)
+BLOCK_ISSUES=$(echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="BLOCK" or .severity=="CRITICAL")' 2>/dev/null)
+BLOCK_COUNT=$(echo "$REVIEW_JSON" | jq -r '[.issues[] | select(.severity=="BLOCK" or .severity=="CRITICAL")] | length' 2>/dev/null)
 
 if [ "$BLOCK_COUNT" -gt 0 ]; then
   echo ""
@@ -237,26 +349,30 @@ if [ "$BLOCK_COUNT" -gt 0 ]; then
   echo ""
   echo "Found $BLOCK_COUNT critical issue(s):"
   echo ""
-  echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="BLOCK") | "  ❌ [\(.severity)] \(.file):\(.line)\n     \(.message)\n"'
+  # Display issues - description includes file:line info from Copilot
+  echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="BLOCK" or .severity=="CRITICAL") | 
+    "  ❌ [\(.severity)] \(.type // "Issue")\n     \(.description // .message // "No details")\n"' 2>/dev/null
   echo "${YELLOW}Fix these issues or use 'git commit --no-verify' to bypass.${NC}"
   echo "Review details saved to: $LAST_REVIEW_FILE"
   echo ""
   exit 1
 fi
 
-# Show warnings and info
-WARN_COUNT=$(echo "$REVIEW_JSON" | jq -r '[.issues[] | select(.severity=="WARN")] | length')
-INFO_COUNT=$(echo "$REVIEW_JSON" | jq -r '[.issues[] | select(.severity=="INFO")] | length')
+# Show warnings and info (support various severity levels)
+WARN_COUNT=$(echo "$REVIEW_JSON" | jq -r '[.issues[] | select(.severity=="WARN" or .severity=="WARNING" or .severity=="ERROR" or .severity=="HIGH")] | length' 2>/dev/null)
+INFO_COUNT=$(echo "$REVIEW_JSON" | jq -r '[.issues[] | select(.severity=="INFO" or .severity=="LOW")] | length' 2>/dev/null)
 
 if [ "$WARN_COUNT" -gt 0 ] || [ "$INFO_COUNT" -gt 0 ]; then
   echo ""
   echo "${YELLOW}[AI Review] Found $WARN_COUNT warning(s) and $INFO_COUNT info message(s):${NC}"
   echo ""
   if [ "$WARN_COUNT" -gt 0 ]; then
-    echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="WARN") | "  ⚠️  [\(.severity)] \(.file):\(.line)\n     \(.message)\n"'
+    echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="WARN" or .severity=="WARNING" or .severity=="ERROR" or .severity=="HIGH") | 
+      "  ⚠️  [\(.severity)] \(.type // "Warning")\n     \(.description // .message // "No details")\n"' 2>/dev/null
   fi
   if [ "$INFO_COUNT" -gt 0 ]; then
-    echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="INFO") | "  ℹ️  [\(.severity)] \(.file):\(.line)\n     \(.message)\n"'
+    echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="INFO" or .severity=="LOW") | 
+      "  ℹ️  [\(.severity)] \(.type // "Info")\n     \(.description // .message // "No details")\n"' 2>/dev/null
   fi
 fi
 

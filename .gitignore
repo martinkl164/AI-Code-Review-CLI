@@ -1,5 +1,28 @@
+# =============================================================================
+# SECURITY: Sensitive files - NEVER send to AI review
+# =============================================================================
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+*credentials*
+*secrets*
+.env
+.env.*
+.env.local
+.env.*.local
+config/local.*
+application-local.properties
+application-local.yml
+**/secret/**
+**/secrets/**
+
+# =============================================================================
 # AI Review temporary files
+# =============================================================================
 .ai/last_review.json
+.ai/last_review_raw.txt
 .ai/temp/
 .ai/*.log
 

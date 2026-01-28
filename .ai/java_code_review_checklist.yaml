@@ -1,31 +1,118 @@
 # Java Code Review Checklist
+# Version: 1.1.0
+# Last Updated: 2026-01-28
+# Reference: OWASP Top 10 2021
 # Each rule must have: id, description, severity (BLOCK | WARN | INFO)
 
+metadata:
+  version: "1.1.0"
+  language: "java"
+  owasp_reference: "https://owasp.org/Top10/"
+
 rules:
+  # =============================================================================
+  # BLOCK Severity - Critical Security Issues (Prevents Commit)
+  # =============================================================================
+
+  # Category: Sensitive Data Exposure (OWASP A02:2021)
   - id: hardcoded-secret
+    category: sensitive-data
+    owasp: "A02:2021"
     description: "Detect hardcoded secrets, passwords, API keys, or credentials."
     severity: BLOCK
+
+  # Category: Injection (OWASP A03:2021)
   - id: sql-injection
+    category: injection
+    owasp: "A03:2021"
     description: "Check for SQL queries that do not use PreparedStatement or parameterized queries."
     severity: BLOCK
+
+  - id: command-injection
+    category: injection
+    owasp: "A03:2021"
+    description: "Detect Runtime.exec() or ProcessBuilder with unsanitized user input."
+    severity: BLOCK
+
+  - id: path-traversal
+    category: injection
+    owasp: "A03:2021"
+    description: "Detect file operations with unsanitized paths that could allow ../../../ traversal."
+    severity: BLOCK
+
+  - id: xxe-vulnerability
+    category: injection
+    owasp: "A03:2021"
+    description: "Detect XML parsing without disabling external entities (XXE attacks)."
+    severity: BLOCK
+
+  # Category: Insecure Design (OWASP A04:2021)
   - id: npe-risk
+    category: insecure-design
+    owasp: "A04:2021"
     description: "Identify code that may cause NullPointerException."
     severity: BLOCK
+
   - id: unsafe-deserialization
+    category: insecure-design
+    owasp: "A08:2021"
     description: "Detect unsafe deserialization of untrusted data."
     severity: BLOCK
+
   - id: thread-safety
+    category: insecure-design
+    owasp: "A04:2021"
     description: "Check for thread safety issues in shared mutable state."
     severity: BLOCK
+
+  # Category: Cryptographic Failures (OWASP A02:2021)
+  - id: insecure-random
+    category: cryptographic-failures
+    owasp: "A02:2021"
+    description: "Detect use of java.util.Random for security-sensitive operations instead of SecureRandom."
+    severity: BLOCK
+
+  # Category: Security Logging (OWASP A09:2021)
+  - id: logging-sensitive-data
+    category: logging-failures
+    owasp: "A09:2021"
+    description: "Detect logging of passwords, tokens, or PII that should not appear in logs."
+    severity: BLOCK
+
+  # =============================================================================
+  # WARN Severity - Code Quality Issues (Allows Commit with Warnings)
+  # =============================================================================
+
   - id: exception-handling
+    category: code-quality
     description: "Ensure exceptions are handled properly and not silently ignored."
     severity: WARN
+
   - id: performance-collections
+    category: code-quality
     description: "Detect inefficient collection usage or performance anti-patterns."
     severity: WARN
-  - id: naming-conventions
-    description: "Check for violations of Java naming conventions."
-    severity: INFO
+
   - id: missing-tests
+    category: code-quality
     description: "Flag new logic without corresponding tests."
     severity: WARN
+
+  - id: resource-leak
+    category: code-quality
+    description: "Detect unclosed streams, connections, or resources not using try-with-resources."
+    severity: WARN
+
+  - id: input-validation
+    category: code-quality
+    description: "Detect missing input validation for method parameters from external sources."
+    severity: WARN
+
+  # =============================================================================
+  # INFO Severity - Style and Convention Violations (Allows Commit)
+  # =============================================================================
+
+  - id: naming-conventions
+    category: style
+    description: "Check for violations of Java naming conventions."
+    severity: INFO
