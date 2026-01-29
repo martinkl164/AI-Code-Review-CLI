@@ -1,6 +1,8 @@
 #!/bin/sh
-# Installation script for Java AI Code Review pre-commit hook
+# Installation script for Java AI Code Review pre-commit hook (macOS/Linux)
 # This script sets up the pre-commit hook and verifies dependencies
+#
+# NOTE: Windows users should use install.ps1 instead (PowerShell).
 
 set -e
 
@@ -32,44 +34,20 @@ fi
 echo "${BLUE}[1/5]${NC} Checking dependencies..."
 echo ""
 
-# Check for gh CLI
-if ! command -v gh >/dev/null 2>&1; then
-  echo "${RED}✗ GitHub CLI (gh) not found${NC}"
+# Check for copilot CLI (standalone)
+if ! command -v copilot >/dev/null 2>&1; then
+  echo "${RED}✗ GitHub Copilot CLI not found${NC}"
   echo ""
-  echo "Please install GitHub CLI:"
-  echo "  - Windows: winget install --id GitHub.cli"
-  echo "  - macOS:   brew install gh"
-  echo "  - Linux:   https://github.com/cli/cli/blob/trunk/docs/install_linux.md"
+  echo "Please install GitHub Copilot CLI:"
+  echo "  npm install -g @githubnext/github-copilot-cli"
+  echo ""
+  echo "After installation, authenticate with:"
+  echo "  copilot auth"
   echo ""
   exit 1
 else
-  echo "${GREEN}✓ GitHub CLI (gh) found${NC}"
-fi
-
-# Note: jq is no longer required since we switched to markdown output parsing
-
-# Check for gh copilot extension
-if ! gh extension list | grep -q "github/gh-copilot"; then
-  echo "${YELLOW}⚠ GitHub Copilot CLI extension not installed${NC}"
-  echo ""
-  echo "Would you like to install it now? (y/n)"
-  read -r response
-  if [ "$response" = "y" ] || [ "$response" = "Y" ]; then
-    echo ""
-    echo "Installing GitHub Copilot CLI extension..."
-    if gh extension install github/gh-copilot; then
-      echo "${GREEN}✓ GitHub Copilot CLI extension installed${NC}"
-    else
-      echo "${RED}✗ Failed to install GitHub Copilot CLI extension${NC}"
-      echo "Please install manually: gh extension install github/gh-copilot"
-      exit 1
-    fi
-  else
-    echo "${YELLOW}Skipping Copilot installation. You'll need to install it later.${NC}"
-    echo "Run: gh extension install github/gh-copilot"
-  fi
-else
-  echo "${GREEN}✓ GitHub Copilot CLI extension found${NC}"
+  COPILOT_VERSION=$(copilot --version 2>&1 | head -1)
+  echo "${GREEN}✓ GitHub Copilot CLI found ($COPILOT_VERSION)${NC}"
 fi
 
 echo ""

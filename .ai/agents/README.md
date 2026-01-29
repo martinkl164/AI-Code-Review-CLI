@@ -121,7 +121,21 @@ This directory contains the configuration for a multi-agent code review system t
 
 ## Parallel Execution
 
-Agents run in parallel using bash background jobs:
+### Windows (PowerShell)
+
+Agents run in parallel using PowerShell jobs:
+
+```powershell
+$SecurityJob = Start-Job -ScriptBlock { ... } -ArgumentList $args
+$NamingJob = Start-Job -ScriptBlock { ... } -ArgumentList $args
+$QualityJob = Start-Job -ScriptBlock { ... } -ArgumentList $args
+
+Wait-Job -Job @($SecurityJob, $NamingJob, $QualityJob) -Timeout 120
+```
+
+### macOS/Linux (bash)
+
+Agents run in parallel using background jobs:
 
 ```bash
 run_agent "security" "$DIFF_CONTENT" &
@@ -134,30 +148,26 @@ This provides **~3x faster** reviews compared to sequential execution.
 
 ## Output Format
 
-Each agent produces JSON output:
+Each agent produces **markdown output** (saved with `.json` extension for historical reasons):
 
-```json
-{
-  "agent": "security|naming|quality",
-  "review_version": "1.0",
-  "summary": "Brief summary of findings",
-  "issues": [
-    {
-      "rule_id": "hardcoded-secret",
-      "severity": "BLOCK|WARN|INFO",
-      "file": "path/to/File.java",
-      "line": "42",
-      "message": "Clear, actionable explanation",
-      "confidence": "HIGH|MEDIUM|LOW"
-    }
-  ],
-  "metadata": {
-    "agent": "agent_name",
-    "files_reviewed": 1,
-    "lines_analyzed": 50
-  }
-}
+```markdown
+## Summary
+Brief summary of findings
+
+## Issues
+
+### [BLOCK] Hardcoded Secret
+- **File**: path/to/File.java
+- **Line**: 42
+- **Message**: Clear, actionable explanation
+
+### [WARN] Poor Exception Handling
+- **File**: path/to/File.java
+- **Line**: 55
+- **Message**: Empty catch block detected
 ```
+
+**Note**: Despite the `.json` file extension, agent outputs are in markdown format for easier parsing without external tools like `jq`.
 
 ## Gitignore
 
@@ -177,7 +187,12 @@ Configuration files (checklist.yaml, prompt.txt) **are committed**.
 ### Adding a New Agent
 
 1. Create agent directory:
+   ```powershell
+   # Windows
+   New-Item -ItemType Directory -Path .ai/agents/performance
+   ```
    ```bash
+   # macOS/Linux
    mkdir .ai/agents/performance
    ```
 
@@ -200,7 +215,15 @@ Configuration files (checklist.yaml, prompt.txt) **are committed**.
    {diff}
    ```
 
-4. Update `pre-commit.sh`:
+4. Update `pre-commit.ps1` (Windows) or `pre-commit.sh` (macOS/Linux):
+   
+   **PowerShell:**
+   ```powershell
+   $PerformanceJob = Start-Job -ScriptBlock { ... } -ArgumentList $args
+   Wait-Job -Job @($SecurityJob, $NamingJob, $QualityJob, $PerformanceJob)
+   ```
+   
+   **Bash:**
    ```bash
    run_agent "performance" "$DIFF_CONTENT" &
    PERFORMANCE_PID=$!
@@ -232,9 +255,20 @@ Edit `prompt.txt` in any agent directory to adjust AI instructions.
 
 Test the multi-agent system:
 
+**Windows (PowerShell):**
+```powershell
+# Stage file with known issues
+git add examples/BadClass.java
+
+# Skip sensitive data check for testing
+$env:SKIP_SENSITIVE_CHECK = 'true'
+git commit -m "Test"
+```
+
+**macOS/Linux:**
 ```bash
 # Stage file with known issues
-git add examples/test.java
+git add examples/BadClass.java
 
 # Skip sensitive data check for testing
 SKIP_SENSITIVE_CHECK=true git commit -m "Test"
@@ -247,16 +281,16 @@ Multi-Agent Code Review System
 ============================================
 
 [AI Review] Launching specialized agents in parallel...
-  → Security Agent (checking OWASP vulnerabilities...)
-  → Naming Agent (checking Java conventions...)
-  → Code Quality Agent (checking correctness...)
+  -> Security Agent (checking OWASP vulnerabilities...)
+  -> Naming Agent (checking Java conventions...)
+  -> Code Quality Agent (checking correctness...)
 
-[AI Review] ✓ Security Agent: Complete (found 4 issues)
-[AI Review] ✓ Naming Agent: Complete (found 10 issues)
-[AI Review] ✓ Code Quality Agent: Complete (found 11 issues)
+[AI Review] -> Security Agent: Complete (found 4 issues)
+[AI Review] -> Naming Agent: Complete (found 10 issues)
+[AI Review] -> Code Quality Agent: Complete (found 11 issues)
 
 [AI Review] Aggregating results from all agents...
-[AI Review] ✓ Summarizer Agent: Complete
+[AI Review] -> Summarizer Agent: Complete
 
 ============================================
 Review Results by Agent
@@ -268,28 +302,37 @@ Final Summary
 ============================================
 [AI Review] Found 2 critical security issues...
 
-❌ AI REVIEW: COMMIT BLOCKED
+AI REVIEW: COMMIT BLOCKED
 ```
 
 ## Troubleshooting
 
 ### Agent not running
-- Check agent configuration exists: `ls .ai/agents/security/`
+- Check agent configuration exists:
+  ```powershell
+  # Windows
+  Test-Path .ai/agents/security
+  Get-ChildItem .ai/agents/security
+  ```
+  ```bash
+  # macOS/Linux
+  ls .ai/agents/security/
+  ```
 - Verify checklist.yaml and prompt.txt exist
 - Check copilot CLI is installed: `copilot --version`
 
 ### Parse error in results
-- Check agent output: `cat .ai/agents/security/review.json`
+- Check agent output:
+  ```powershell
+  Get-Content .ai/agents/security/review.json
+  ```
 - Output is in markdown format (despite .json extension)
-- Verify markdown structure with: `less .ai/agents/security/review.json`
-
-### Agents running sequentially instead of parallel
-- Verify bash version supports background jobs: `bash --version`
-- Check if `&` and `wait` are working: `sleep 1 & wait`
 
 ### Review files appearing in git status
-- Verify .gitignore: `git check-ignore -v .ai/agents/security/review.json`
-- Check gitignore patterns: `cat .gitignore | grep agents`
+- Verify .gitignore:
+  ```powershell
+  git check-ignore -v .ai/agents/security/review.json
+  ```
 
 ## Performance
 

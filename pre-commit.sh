@@ -1,74 +1,12 @@
 #!/bin/sh
-# POSIX-compliant pre-commit hook for Java AI code review
+# POSIX-compliant pre-commit hook for Java AI code review (macOS/Linux)
 # Requires: GitHub CLI with Copilot extension installed and authenticated
 # Usage: Run install.sh to set up, or manually copy to .git/hooks/pre-commit and make executable
+#
+# NOTE: Windows users should use the PowerShell version (pre-commit.ps1) instead.
+#       The install.ps1 script will set this up automatically.
 
 set -e
-
-# ============================================================================
-# HYBRID MODE: Auto-delegate to WSL 2 if running from Windows git
-# ============================================================================
-# This allows users to keep using Windows git (PowerShell/CMD/IntelliJ/etc)
-# while AI review runs in WSL 2 where Copilot CLI works properly
-
-# Check if we're in Windows (Git Bash, PowerShell, or CMD) but WSL is available
-if [ -d "/c/Users" ] && [ ! -d "/mnt/c" ] && [ "$DELEGATED_FROM_WINDOWS" != "1" ]; then
-  # We're in Git Bash/Windows environment (not already in WSL)
-  # Check if WSL is available and has the dependencies
-  if command -v wsl.exe >/dev/null 2>&1; then
-    # Get the repository root
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-    REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-    
-    # Convert Windows path to WSL path (/c/workspace/... -> /mnt/c/workspace/...)
-    WSL_PATH=$(echo "$REPO_ROOT" | sed 's|^/\([a-z]\)/|\1:/|' | sed 's|/|\\|g')
-    WSL_PATH=$(wsl.exe wslpath -u "$WSL_PATH" 2>/dev/null || echo "$REPO_ROOT" | sed 's|^/c/|/mnt/c/|; s|^/d/|/mnt/d/|; s|^/e/|/mnt/e/|')
-    
-    # Check if WSL has copilot installed
-    if wsl.exe bash -c "command -v copilot >/dev/null 2>&1" 2>/dev/null; then
-      echo "?? Auto-delegating to WSL 2 for AI review..."
-      
-      # Delegate to WSL - run the same hook but in WSL environment
-      # Use exec to replace current process (exit code will be preserved)
-      exec wsl.exe bash -c "cd '$WSL_PATH' && DELEGATED_FROM_WINDOWS=1 .git/hooks/pre-commit"
-    else
-      echo "??  Warning: WSL 2 detected but GitHub Copilot CLI not installed in WSL"
-      echo "   Please install dependencies in WSL: gh extension install github/gh-copilot"
-      echo "   Falling back to Windows mode (may encounter 'too many arguments' errors)"
-      # Continue with Windows mode (will likely fail, but let's try)
-    fi
-  fi
-  # If WSL not available, continue with Git Bash mode (existing code path)
-fi
-
-# If we reach here, either:
-# 1. We're already in WSL 2 (native)
-# 2. We're in Unix/Linux/macOS
-# 3. We're in Git Bash without WSL available
-# 4. We were delegated FROM Windows (DELEGATED_FROM_WINDOWS=1)
-
-# Add common Windows paths for tools (PowerShell/npm installed tools)
-COPILOT_FULL_PATH=""
-
-# Detect platform: Git Bash uses /c/Users, WSL 2 uses /mnt/c/Users
-if [ -d "/c/Users" ] && [ ! -d "/mnt/c" ]; then
-  # Running on Windows with Git Bash (NOT WSL 2)
-  echo "??  Detected: Git Bash on Windows"
-  USER_HOME=$(echo ~)
-  APPDATA=$(cmd.exe //c "echo %APPDATA%" 2>/dev/null | tr -d '\r')
-  LOCALAPPDATA=$(cmd.exe //c "echo %LOCALAPPDATA%" 2>/dev/null | tr -d '\r')
-  
-  # Find copilot.cmd (convert Windows path to Git Bash path)
-  if [ -d "$APPDATA/npm" ]; then
-    if [ -f "$APPDATA/npm/copilot.cmd" ]; then
-      COPILOT_FULL_PATH="$APPDATA/npm/copilot.cmd"
-      export PATH="$APPDATA/npm:$PATH"
-    fi
-  fi
-elif [ -d "/mnt/c/Users" ]; then
-  # Running in WSL 2
-  echo "??  Detected: WSL 2"
-fi
 
 # Configuration
 AI_DIR=".ai"
@@ -77,12 +15,8 @@ PROMPT_FILE="$AI_DIR/java_review_prompt.txt"
 LAST_REVIEW_FILE="$AI_DIR/last_review.json"
 MAX_DIFF_SIZE=20000 # bytes
 
-# Use temporary directory that works across platforms
-if [ -d "/c/Users" ] && [ ! -d "/mnt/c" ]; then
-  # Git Bash - use .ai/temp to avoid path issues
-  TEMP_DIR="$AI_DIR/temp"
-  mkdir -p "$TEMP_DIR"
-elif [ -n "$TMPDIR" ]; then
+# Use temporary directory
+if [ -n "$TMPDIR" ]; then
   TEMP_DIR="$TMPDIR"
 elif [ -d "/tmp" ]; then
   TEMP_DIR="/tmp"
@@ -93,9 +27,8 @@ fi
 
 DIFF_FILE="$TEMP_DIR/java_review_diff_$$.patch"
 
-# Color codes for output (disabled on Windows by default for better compatibility)
-# Set FORCE_COLOR=true to enable colors
-if [ "$FORCE_COLOR" = "true" ] && [ -t 1 ]; then
+# Color codes for output
+if [ -t 1 ]; then
   RED='\033[0;31m'
   YELLOW='\033[1;33m'
   GREEN='\033[0;32m'
@@ -150,39 +83,10 @@ run_agent() {
     { print }
   ' "$AGENT_PROMPT")
   
-  # Call Copilot CLI based on platform
-  if [ -d "/c/Users" ] && [ ! -d "/mnt/c" ]; then
-    # Git Bash only - use PowerShell wrapper
-    mkdir -p "$AI_DIR/temp"
-    local PROMPT_FILE="$AI_DIR/temp/${AGENT_NAME}_prompt_$$.txt"
-    echo "$AGENT_FULL_PROMPT" > "$PROMPT_FILE"
-    
-    # Create a PowerShell script that reads the prompt file and calls copilot
-    local PS_RUNNER="$AI_DIR/temp/${AGENT_NAME}_runner_$$.ps1"
-    cat > "$PS_RUNNER" << 'PSEOF'
-param([string]$PromptPath)
-$prompt = Get-Content -LiteralPath $PromptPath -Raw -Encoding UTF8
-$ErrorActionPreference = 'Continue'
-try {
-    # Call copilot with the prompt
-    $output = & copilot -p $prompt --silent --allow-all-tools --no-color 2>&1
-    Write-Output $output
-} catch {
-    Write-Output "# Error`n`nFailed to execute copilot: $_"
-}
-PSEOF
-    
-    # Convert to Windows path and execute
-    local WIN_PROMPT_PATH=$(powershell.exe -NoProfile -Command "(Resolve-Path '$PROMPT_FILE').Path" 2>/dev/null | tr -d '\r\n')
-    REVIEW_OUTPUT=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$PS_RUNNER" -PromptPath "$WIN_PROMPT_PATH" 2>&1)
-    
-    rm -f "$PROMPT_FILE" "$PS_RUNNER"
-  else
-    # Unix/Linux/macOS/WSL 2 - call copilot directly
-    REVIEW_OUTPUT=$(copilot -p "$AGENT_FULL_PROMPT" --silent --allow-all-tools --no-color 2>&1 || echo "# Error
+  # Call Copilot CLI directly
+  REVIEW_OUTPUT=$(copilot -p "$AGENT_FULL_PROMPT" --silent --allow-all-tools --no-color 2>&1 || echo "# Error
 
 Agent failed to execute")
-  fi
   
   # Save agent output as markdown (no JSON extraction needed)
   mkdir -p "$AGENT_DIR"
@@ -220,31 +124,10 @@ run_summarizer_agent() {
   ' "$SUMMARIZER_PROMPT")
   
   # Call Copilot CLI
-  if [ -d "/c/Users" ]; then
-    # Windows PowerShell
-    mkdir -p "$AI_DIR/temp"
-    local PS_RUNNER="$AI_DIR/temp/summarizer_runner_$$.ps1"
-    cat > "$PS_RUNNER" << 'PSEOF'
-param([string]$Prompt)
-try {
-    $argList = @('-p', $Prompt, '--silent', '--allow-all-tools', '--no-color')
-    $result = & copilot @argList 2>&1
-    Write-Output $result
-} catch {
-    Write-Output '{"agent":"summarizer","issues":[],"summary":"API error","recommendation":"ALLOW_COMMIT"}'
-}
-PSEOF
-    
-    local WIN_RUNNER=$(powershell.exe -NoProfile -Command "(Resolve-Path '$PS_RUNNER').Path" 2>/dev/null | tr -d '\r\n')
-    SUMMARIZER_OUTPUT=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_RUNNER" -Prompt "$SUMMARIZER_FULL_PROMPT" 2>&1)
-    rm -f "$PS_RUNNER"
-  else
-    # Unix
-    local FULL_PROMPT="$SUMMARIZER_FULL_PROMPT
+  local FULL_PROMPT="$SUMMARIZER_FULL_PROMPT
 
 CRITICAL: Output ONLY valid JSON."
-    SUMMARIZER_OUTPUT=$(copilot -p "$FULL_PROMPT" --silent --allow-all-tools --no-color 2>&1 || echo '{"agent":"summarizer","issues":[],"summary":"API error","recommendation":"ALLOW_COMMIT"}')
-  fi
+  SUMMARIZER_OUTPUT=$(copilot -p "$FULL_PROMPT" --silent --allow-all-tools --no-color 2>&1 || echo '{"agent":"summarizer","issues":[],"summary":"API error","recommendation":"ALLOW_COMMIT"}')
   
   # Extract JSON
   local SUMMARIZER_JSON=$(echo "$SUMMARIZER_OUTPUT" | sed -n '/```json/,/```/p' | sed '1d;$d' | tr -d '\n' || echo "")
@@ -310,14 +193,11 @@ check_dependency() {
     echo "${RED}[AI Review] Error: Required command '$1' not found.${NC}"
     echo ""
     case "$1" in
-      gh)
-        echo "GitHub CLI is required. Install it:"
-        echo "  - Windows: winget install --id GitHub.cli"
-        echo "  - macOS: brew install gh"
-        echo "  - Linux: https://github.com/cli/cli/blob/trunk/docs/install_linux.md"
+      copilot)
+        echo "GitHub Copilot CLI is required. Install it:"
+        echo "  npm install -g @githubnext/github-copilot-cli"
         echo ""
-        echo "After installation, authenticate with: gh auth login"
-        echo "Then install Copilot: gh extension install github/gh-copilot"
+        echo "After installation, authenticate with: copilot auth"
         ;;
     esac
     echo ""
@@ -330,31 +210,10 @@ check_dependency() {
 echo "${BLUE}[AI Review]${NC} Checking dependencies..."
 
 # Check for copilot
-if [ -d "/c/Users" ] && [ ! -d "/mnt/c" ]; then
-  # Git Bash - check via PowerShell
-  if powershell.exe -Command "Get-Command copilot -ErrorAction SilentlyContinue" >/dev/null 2>&1; then
-    echo "${BLUE}[AI Review]${NC} Found copilot (via PowerShell)"
-  else
-    echo "${RED}[AI Review] Error: Required command 'copilot' not found.${NC}"
-    echo ""
-    echo "GitHub Copilot CLI is required. Install it:"
-    echo "  gh extension install github/gh-copilot"
-    echo ""
-    echo "After installation, authenticate with: gh auth login"
-    echo ""
-    echo "?? Recommended: Use WSL 2 for better compatibility"
-    echo "   See README for WSL 2 setup instructions"
-    echo ""
-    echo "To bypass this check temporarily, use: git commit --no-verify"
-    exit 1
-  fi
-else
-  # Unix/Linux/macOS/WSL 2 - check directly
-  if ! check_dependency "copilot"; then
-    exit 1
-  fi
-  echo "${BLUE}[AI Review]${NC} Found copilot"
+if ! check_dependency "copilot"; then
+  exit 1
 fi
+echo "${BLUE}[AI Review]${NC} Found copilot"
 
 # Note: jq is no longer required since we switched to markdown output parsing
 
@@ -575,13 +434,9 @@ if [ "$WARN_COUNT" -gt 0 ] || [ "$INFO_COUNT" -gt 0 ]; then
   echo ""
   if [ "$WARN_COUNT" -gt 0 ]; then
     echo "$FINAL_REPORT" | grep -B 1 -A 5 '^\### \[WARN\]\|^\### \[WARNING\]'
-    # Old line: 
-      "  ??????  [\(.severity)] [\(.agent)] \(.file):\(.line)\n     \(.message)\n"' 2>/dev/null
   fi
   if [ "$INFO_COUNT" -gt 0 ]; then
     echo "$FINAL_REPORT" | grep -B 1 -A 5 '^\### \[INFO\]'
-    # Old line: 
-      "  ??????  [\(.severity)] [\(.agent)] \(.file):\(.line)\n     \(.message)\n"' 2>/dev/null
   fi
 fi
 

@@ -97,9 +97,8 @@ This isn't just a security tool—it's a comprehensive AI code reviewer using a 
 | ⚡ **Reviews Only Changes** | Analyzes staged diffs, not entire files—fast and focused |
 | 🧠 **AI-Powered Analysis** | Leverages GitHub Copilot for intelligent code understanding |
 | 🚫 **Smart Blocking** | Only blocks BLOCK-severity issues (security/bugs), allows WARN/INFO |
-| 📋 **Structured Markdown Output** | Human-readable results parsed with native bash tools (no jq required) |
-| 🖥️ **Cross-Platform** | Works on Windows (WSL 2 recommended), macOS, and Linux |
-| 💻 **WSL 2 Auto-Delegation** | Windows users keep their workflow - hook auto-delegates to WSL for compatibility |
+| 📋 **Structured Markdown Output** | Human-readable results parsed with native tools (no jq required) |
+| 🖥️ **Cross-Platform** | Native PowerShell for Windows, bash for macOS/Linux |
 | 🔧 **IDE-Compatible** | Works with IntelliJ IDEA, VS Code, PyCharm, WebStorm, and any git client |
 | ✏️ **Fully Customizable** | Extend the YAML checklist with your own rules |
 
@@ -110,42 +109,44 @@ This isn't just a security tool—it's a comprehensive AI code reviewer using a 
 ### Prerequisites
 
 <details>
-<summary><strong>1. Install GitHub CLI</strong></summary>
+<summary><strong>1. Install GitHub Copilot CLI</strong></summary>
 
+**All platforms (requires Node.js):**
 ```sh
-# Windows
-winget install --id GitHub.cli
-
-# macOS
-brew install gh
-
-# Linux
-# See https://github.com/cli/cli/blob/trunk/docs/install_linux.md
-
-# Then authenticate
-gh auth login
+npm install -g @githubnext/github-copilot-cli
 ```
-</details>
 
-<details>
-<summary><strong>2. Install Copilot Extension</strong></summary>
-
+**Then authenticate:**
 ```sh
-gh extension install github/gh-copilot
+copilot auth
 ```
+
+This will open a browser window to authenticate with your GitHub account (requires GitHub Copilot subscription).
 </details>
 
 ### Installation
 
-**Option A: Automated (Recommended)**
+**Windows (PowerShell) - Recommended:**
+```powershell
+.\install.ps1
+```
+
+**macOS/Linux (bash):**
 ```sh
 ./install.sh
 ```
 
 The script checks dependencies, installs the pre-commit hook, and verifies everything works.
 
-**Option B: Manual**
+**Manual Installation:**
+```powershell
+# Windows - copy the hook wrapper
+Copy-Item pre-commit.ps1 -Destination . -Force
+# The installer creates a bash wrapper in .git/hooks/pre-commit that calls the PowerShell script
+```
+
 ```sh
+# macOS/Linux
 cp pre-commit.sh .git/hooks/pre-commit
 chmod +x .git/hooks/pre-commit
 ```
@@ -154,7 +155,7 @@ chmod +x .git/hooks/pre-commit
 
 Now every `git commit` triggers an automatic AI review:
 
-```sh
+```powershell
 git add src/main/java/MyClass.java
 git commit -m "Add new feature"
 # AI review runs automatically ✨
@@ -162,308 +163,37 @@ git commit -m "Add new feature"
 
 ---
 
-## 💻 Windows Users: Why Use WSL 2?
-
-> **💡 Works with Your IDE!** WSL 2 is fully compatible with IntelliJ IDEA, VS Code, PyCharm, WebStorm, and other popular IDEs. You can commit directly from your IDE and the AI review will work perfectly. See [IDE setup instructions](#using-with-ides-intellij-vs-code-etc) below.
-
-### The Problem with Git Bash
-
-Git Bash on Windows encounters a critical limitation when running this AI code review system:
-
-**Technical Issue: PowerShell Command-Line Length Limits**
-
-The GitHub Copilot CLI is installed as a **GitHub CLI extension** (via `gh extension install github/gh-copilot`). On Windows, when Git Bash invokes the `copilot` command, it goes through the GitHub CLI's Windows launcher which uses PowerShell for command execution. This creates a chain: Git Bash → Windows gh.exe → PowerShell → copilot extension.
-
-When the pre-commit hook passes the entire review prompt (checklist rules + code diff) as a command-line argument through this chain, PowerShell's argument length restrictions cause failures.
-
-**The Error:**
-```
-error: too many arguments. Expected 0 arguments but got 130.
-```
-
-This happens because:
-1. The AI review prompts are comprehensive (500-1000+ characters including checklist rules)
-2. PowerShell has a limit on argument length (~8000 characters, but the execution chain is more restrictive)
-3. Git Bash must escape and pass the entire prompt through the Windows gh.exe launcher to PowerShell
-4. Special characters in code diffs (quotes, backticks, newlines) make escaping complex
-5. The GitHub CLI Windows launcher has additional argument parsing limitations
-
-### Why WSL 2 Solves This
-
-Windows Subsystem for Linux 2 (WSL 2) provides a **native Linux environment with a real Linux kernel** running directly on Windows:
-
-> **💡 Why WSL 2?** WSL 2 uses a real Linux kernel (unlike WSL 1 which was a translation layer), providing full system call compatibility, better performance, and native tool support.
-
-| Aspect | Git Bash | WSL 2 |
-| ------ | -------- | ----- |
-| **Environment** | Windows with Unix-like shell | Full Linux kernel (real) |
-| **Copilot CLI** | GitHub CLI extension via Windows launcher | GitHub CLI extension (native) |
-| **Command Limits** | PowerShell restrictions (~8K chars) | Linux limits (>2MB arguments) |
-| **Path Translation** | `/c/Users` requires translation | Native `/mnt/c/Users` |
-| **Emoji Support** | Poor (encoding issues) | Excellent (native UTF-8) |
-| **Performance** | Slow (PowerShell overhead) | Fast (native) |
-| **Script Compatibility** | Requires workarounds | Native bash support |
-
-### Benefits You'll Get
-
-1. **No More Argument Errors**: Native Linux execution bypasses Windows launcher and PowerShell chain entirely
-2. **Better Performance**: ~30% faster execution without Windows CLI wrapper overhead
-3. **Proper Emoji Display**: See 🔒⏳ ✅✓ icons correctly instead of `??`
-4. **More Reliable**: Native bash environment without Windows path translation issues
-5. **IDE Compatible**: Works seamlessly with IntelliJ, VS Code, and other IDEs
-6. **Better Integration**: Access Windows files via `/mnt/c/` while using Linux tools
-
-### Supported Workflows
-
-| Workflow | Windows Git | Pure WSL 2 | Hybrid Mode |
-| -------- | ----------- | ---------- | ----------- |
-| **PowerShell commits** | ❌ Fails | ✅ Works | ✅ Auto-delegates |
-| **CMD commits** | ❌ Fails | ✅ Works | ✅ Auto-delegates |
-| **Git Bash commits** | ❌ Fails | ✅ Works | ✅ Auto-delegates |
-| **IntelliJ commits** | ❌ Fails | ✅ Config | ✅ Keep Windows git |
-| **VS Code commits** | ❌ Fails | ✅ Extension | ✅ Keep Windows git |
-| **GitHub Desktop** | ❌ Fails | ✅ Works | ✅ Auto-delegates |
-| **Emoji display** | ⚠️ `??` | ✅ UTF-8 | ✅ UTF-8 (via WSL) |
-| **Setup effort** | N/A | Medium | Low (one-time) |
-
-**💡 Recommendation**: Use **Hybrid Mode** - keep your existing workflow (PowerShell, CMD, IntelliJ with Windows git) and let the hook automatically delegate AI review to WSL 2.
-
----
-
-## Two Setup Approaches
-
-### Approach 1: Hybrid Mode (RECOMMENDED for Most Users)
-
-**Best for:** Developers who want to keep their current workflow (PowerShell, CMD, IntelliJ with Windows git, etc.)
-
-**How it works:**
-1. You continue using Windows git from wherever you prefer (PowerShell, CMD, IntelliJ, VS Code, etc.)
-2. When you commit, Windows git triggers the pre-commit hook
-3. The hook **auto-detects** it's running in Windows and **delegates** to WSL 2 for AI review
-4. AI review runs in WSL 2 (where Copilot CLI works), then returns control to Windows git
-5. Your commit succeeds or fails based on the review
-
-**Advantages:**
-- ✅ No change to your existing workflow
-- ✅ Keep using your IDE's built-in git
-- ✅ Works from PowerShell, CMD, Git Bash, IntelliJ, VS Code, etc.
-- ✅ Minimal setup (just install WSL 2 dependencies)
-
-**Setup Steps:**
-
-**Step 1: Install WSL 2** (one-time)
-
-> **⚠️ Requirements**: 
-> - Windows 10 version 2004+ (Build 19041+) or Windows 11
-> - WSL 2 is required (not WSL 1) for full compatibility and performance
-
-```powershell
-# In PowerShell (as Administrator)
-wsl --install
-# This installs WSL 2 by default
-```
-
-Verify WSL 2 is installed:
-```powershell
-wsl --list --verbose
-# Should show "VERSION 2" for your distro
-```
-
-**Step 2: Install Ubuntu** (one-time)
-
-```powershell
-wsl --install -d Ubuntu
-# Or choose another distro: wsl --list --online
-```
-
-**Step 3: Install Dependencies in WSL 2** (one-time)
-
-```bash
-# Open WSL terminal and run:
-sudo apt update
-sudo apt install gh
-
-# Authenticate GitHub CLI
-gh auth login
-
-# Install Copilot extension
-gh extension install github/gh-copilot
-```
-
-**Step 4: Run the Installer** (from your project in Windows)
-
-```bash
-# In PowerShell, CMD, or Git Bash:
-cd C:\workspace\your-project
-./install.sh
-```
-
-The installer will detect WSL 2 and configure the hook to auto-delegate.
-
-**Step 5: Commit as usual!**
-
-From **PowerShell**:
-```powershell
-cd C:\workspace\your-project
-git add MyFile.java
-git commit -m "Add new feature"
-# Hook automatically runs in WSL 2! ✅
-```
-
-From **CMD**:
-```cmd
-cd C:\workspace\your-project
-git add MyFile.java
-git commit -m "Add new feature"
-# Hook automatically runs in WSL 2! ✅
-```
-
-From **IntelliJ** (keep using Windows git):
-1. No configuration needed - keep using `git.exe`
-2. Use the commit dialog (Ctrl+K) as normal
-3. Hook automatically delegates to WSL 2! ✅
-
-From **VS Code** (keep using Windows git):
-1. No configuration needed
-2. Use Source Control panel as normal
-3. Hook automatically delegates to WSL 2! ✅
-
----
-
-### Approach 2: Pure WSL 2 Mode
-
-**Best for:** Developers who want the purest Linux experience or are already comfortable with WSL 2
-
-**How it works:**
-1. You switch to using WSL 2's native git
-2. All git operations run in WSL 2 environment
-3. No delegation needed - everything is native Linux
-
-**Advantages:**
-- ✅ Fastest performance (no delegation overhead)
-- ✅ Best emoji/UTF-8 support
-- ✅ Pure Linux environment
-
-**Disadvantages:**
-- ⚠️ Requires configuring IDE to use WSL 2 git
-- ⚠️ Requires learning WSL 2 paths (`/mnt/c/...`)
-
-**Setup Steps:**
-
-**Step 1: Install WSL 2**
-
-> **⚠️ Requirements**:
-> - Windows 10 version 2004+ (Build 19041+) or Windows 11
-> - WSL 2 is required (not WSL 1) - provides real Linux kernel for full compatibility
-
-```powershell
-# In PowerShell (as Administrator)
-wsl --install
-# This installs WSL 2 by default
-```
-
-Verify WSL 2 is installed:
-```powershell
-wsl --list --verbose
-# Should show "VERSION 2"
-```
-
-If you have WSL 1, upgrade to WSL 2:
-```powershell
-wsl --set-version Ubuntu 2
-```
-
-**Step 2: Install Ubuntu** (or your preferred distro)
-
-```powershell
-wsl --install -d Ubuntu
-# Or choose another distro: wsl --list --online
-```
-
-**Step 3: Inside WSL 2, Install Dependencies**
-
-```bash
-# Update package list
-sudo apt update
-
-# Install GitHub CLI
-sudo apt install gh
-
-# Authenticate with GitHub
-gh auth login
-
-# Install Copilot extension
-gh extension install github/gh-copilot
-```
-
-**Step 4: Navigate to Your Project**
-
-```bash
-# Windows drives are mounted at /mnt/
-cd /mnt/c/workspace/your-project
-```
-
-**Step 5: Run the Installer**
-
-```bash
-./install.sh
-```
-
-**Step 6: Make Commits from WSL 2**
-
-```bash
-git add YourFile.java
-git commit -m "Your commit message"
-# AI review runs automatically!
-```
-
-### Can I Still Use Git Bash?
-
-Yes, but with limitations:
-- ✅ Simple git operations work fine
-- ⚠️ AI code review will fail with "too many arguments" error
-- 💡 **Recommendation**: Use WSL 2 for commits, Git Bash for other git operations
-
-### Using with IDEs (IntelliJ, VS Code, etc.)
-
-> **🎯 With Hybrid Mode, NO IDE configuration is needed!** Keep using your IDE's default Windows git. The hook will auto-detect and delegate to WSL 2.
-
-Most developers commit from within their IDE. With Hybrid Mode, this just works:
-
-#### Hybrid Mode (No Configuration Needed)
+## 💻 Platform Support
+
+| Platform | Script | Notes |
+|----------|--------|-------|
+| **Windows** | `pre-commit.ps1` | Native PowerShell, runs parallel jobs |
+| **macOS** | `pre-commit.sh` | Native bash, runs background jobs |
+| **Linux** | `pre-commit.sh` | Native bash, runs background jobs |
+
+### Windows Users
+
+The tool runs natively in PowerShell with full feature support:
+- ✅ Parallel agent execution using PowerShell jobs
+- ✅ Full emoji and Unicode support
+- ✅ No WSL required
+- ✅ Works with any IDE (IntelliJ, VS Code, etc.)
+- ✅ Works from PowerShell, CMD, or Git Bash
+
+### Using with IDEs
 
 **IntelliJ IDEA / PyCharm / WebStorm:**
-1. Keep using Windows git (no settings change needed)
-2. Commit via IDE dialog (Ctrl+K) as normal
-3. Hook auto-detects Windows environment and delegates to WSL 2 ✅
-4. Review output appears in IDE's console
+1. Commit via IDE dialog (Ctrl+K) as normal
+2. The pre-commit hook runs automatically
+3. Review output appears in the IDE's console
 
 **VS Code:**
-1. Keep using Windows git (no settings change needed)
-2. Commit via Source Control panel as normal
-3. Hook auto-detects Windows environment and delegates to WSL 2 ✅
-4. Review output appears in integrated terminal
+1. Commit via Source Control panel as normal
+2. The pre-commit hook runs automatically
+3. Review output appears in the terminal
 
-**Any other IDE (WebStorm, Rider, Eclipse, etc.):**
-1. Keep using Windows git
-2. Commit as you normally would
-3. Hook auto-delegates to WSL 2 ✅
-
-#### Pure WSL 2 Mode (Requires IDE Configuration)
-
-If you prefer Pure WSL 2 Mode for maximum performance:
-
-**IntelliJ IDEA / PyCharm / WebStorm:**
-1. Go to **Settings** → **Version Control** → **Git**
-2. Set **Path to Git executable** to: `\\wsl$\Ubuntu\usr\bin\git`
-3. Click **Test** to verify
-4. When you commit via IDE, everything runs natively in WSL 2 ✅
-
-**VS Code:**
-1. Install the **Remote - WSL** extension
-2. Click green button in bottom-left → **New WSL Window**
-3. Open your project folder (VS Code accesses via `/mnt/c/...`)
-4. Commit via Source Control panel - runs natively in WSL 2 ✅
+**Any Git Client:**
+The hook works with any tool that uses git—GitHub Desktop, GitKraken, Tower, etc.
 
 ---
 
@@ -554,7 +284,7 @@ Regardless of which tier you use, never send:
 <summary><strong>See full workflow</strong></summary>
 
 #### Step 1: Attempt Commit
-```sh
+```powershell
 git add src/main/java/UserService.java
 git commit -m "Add user authentication"
 ```
@@ -576,7 +306,7 @@ git commit -m "Add user authentication"
 - Ask Copilot: *"Fix this hardcoded password using environment variables"*
 
 **Or via CLI:**
-```sh
+```powershell
 gh copilot suggest "How do I fix hardcoded passwords in Java using environment variables?"
 ```
 
@@ -590,7 +320,7 @@ private static final String DB_PASSWORD = System.getenv("DB_PASSWORD");
 ```
 
 #### Step 5: Commit Again
-```sh
+```powershell
 git add src/main/java/UserService.java
 git commit -m "Add user authentication with secure password handling"
 # ✅ Review passes!
@@ -602,24 +332,23 @@ git commit -m "Add user authentication with secure password handling"
 
 ### Workflow 2: Review Past Results
 
-```sh
-# View full review (markdown format)
-cat .ai/last_review.json
-# Or with less for better readability
-less .ai/last_review.json
-
-# View only BLOCK/CRITICAL issues
-grep -A 2 '### \[BLOCK\]\|### \[CRITICAL\]' .ai/last_review.json
-
-# Count issues by severity
-echo "BLOCK: $(grep -c '### \[BLOCK\]' .ai/last_review.json)"
-echo "WARN: $(grep -c '### \[WARN\]' .ai/last_review.json)"
-echo "INFO: $(grep -c '### \[INFO\]' .ai/last_review.json)"
+```powershell
+# View full review
+Get-Content .ai/last_review.json
 
 # View individual agent reports
-cat .ai/agents/security/review.json
-cat .ai/agents/naming/review.json
-cat .ai/agents/quality/review.json
+Get-Content .ai/agents/security/review.json
+Get-Content .ai/agents/naming/review.json
+Get-Content .ai/agents/quality/review.json
+
+# Search for BLOCK issues
+Select-String -Path .ai/last_review.json -Pattern "\[BLOCK\]"
+```
+
+**On macOS/Linux:**
+```sh
+cat .ai/last_review.json
+grep -A 2 '\[BLOCK\]' .ai/last_review.json
 ```
 
 ---
@@ -628,13 +357,13 @@ cat .ai/agents/quality/review.json
 
 When you absolutely must commit immediately:
 
-```sh
+```powershell
 git commit --no-verify -m "Emergency hotfix for production"
 ```
 
 > ⚠️ **Use sparingly!** Always track bypassed security debt:
-> ```sh
-> echo "TODO: Fix issues from $(git rev-parse HEAD)" >> SECURITY_DEBT.md
+> ```powershell
+> Add-Content -Path SECURITY_DEBT.md -Value "TODO: Fix issues from $(git rev-parse HEAD)"
 > ```
 
 ---
@@ -644,12 +373,13 @@ git commit --no-verify -m "Emergency hotfix for production"
 ```yaml
 # .github/workflows/pr-check.yml
 - name: Run AI Code Review
+  shell: pwsh
   run: |
-    if ! ./pre-commit.sh; then
-      echo "❌ Code review failed"
-      cat .ai/last_review.json
+    if (-not (.\pre-commit.ps1)) {
+      Write-Host "Code review failed"
+      Get-Content .ai/last_review.json
       exit 1
-    fi
+    }
 ```
 
 ---
@@ -658,40 +388,28 @@ git commit --no-verify -m "Emergency hotfix for production"
 
 ### Disable Review
 
-```sh
+```powershell
 # Single commit
 git commit --no-verify -m "Skip review for this commit"
 
-# Permanently
-export AI_REVIEW_ENABLED=false
-# or
-rm .git/hooks/pre-commit
+# Permanently (session)
+$env:AI_REVIEW_ENABLED = 'false'
+
+# Remove hook entirely
+Remove-Item .git/hooks/pre-commit
 ```
 
 ### Uninstall / Remove the Hook
 
-**Remove hook for this repository**
-
-```sh
-# macOS / Linux / Git Bash
-rm .git/hooks/pre-commit
-
-# PowerShell (Windows)
+**Windows (PowerShell):**
+```powershell
 Remove-Item .git\hooks\pre-commit
 ```
 
-**If you had an existing `pre-commit` hook before installing**
-
-- Restore it from your own backup (for example, rename `pre-commit.bak` back to `pre-commit`).
-
-**If your Git is configured to use a custom hooks directory**
-
+**macOS/Linux:**
 ```sh
-git config --get core.hooksPath
-git config --global --get core.hooksPath
+rm .git/hooks/pre-commit
 ```
-
-If either command prints a path, remove the `pre-commit` file from that hooks folder instead of `.git/hooks/`.
 
 ### Customize Checklist
 
@@ -712,14 +430,24 @@ rules:
 | `WARN` | ⚠️ Allows commit, shows warning | Poor exception handling, performance issues |
 | `INFO` | ℹ️ Allows commit, shows info | Naming convention violations |
 
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AI_REVIEW_ENABLED` | `true` | Set to `false` to skip AI review |
+| `SKIP_SENSITIVE_CHECK` | `false` | Skip sensitive data warning prompt |
+| `FORCE_COLOR` | `false` | Force colored output (bash only) |
+
 ---
 
 ## 📁 Project Structure
 
 ```
 .
-├── pre-commit.sh                          # Pre-commit hook template
-├── install.sh                             # Automated installation
+├── pre-commit.ps1                         # PowerShell pre-commit hook (Windows)
+├── pre-commit.sh                          # Bash pre-commit hook (macOS/Linux)
+├── install.ps1                            # PowerShell installation script
+├── install.sh                             # Bash installation script
 ├── LICENSE                                # MIT License
 ├── .ai/
 │   ├── agents/                           # Multi-agent system
@@ -729,16 +457,14 @@ rules:
 │   │   └── summarizer/                   # Results aggregator
 │   ├── java_code_review_checklist.yaml   # Review rules (YAML)
 │   ├── java_review_prompt.txt            # AI prompt template
-│   └── last_review.json                  # Last review results (markdown format)
+│   └── last_review.json                  # Last review results
 ├── docs/
 │   ├── ARCHITECTURE.md                   # System design
 │   ├── SECURITY.md                       # Security guide
-│   ├── CUSTOMIZATION.md                  # Extension guide
-│   ├── linkedin_post.md                  # LinkedIn post template
 │   └── linked_image.png                  # Project image
 ├── examples/
-│   ├── test.java                         # Example with issues
-│   ├── example_review_output.json        # Sample output (legacy JSON format)
+│   ├── BadClass.java                     # Example with intentional issues
+│   ├── a.java                            # Simple example file
 │   └── README.md                         # Examples documentation
 └── README.md
 ```
@@ -751,10 +477,18 @@ rules:
 <summary><strong>"GitHub CLI (gh) not found"</strong></summary>
 
 Install GitHub CLI for your platform:
-```sh
+```powershell
 # Windows
 winget install --id GitHub.cli
 
+# Or with Chocolatey
+choco install gh
+
+# Or with Scoop
+scoop install gh
+```
+
+```sh
 # macOS
 brew install gh
 
@@ -782,6 +516,16 @@ gh extension install github/gh-copilot
 <details>
 <summary><strong>Hook not running</strong></summary>
 
+**Windows:**
+```powershell
+# Check if hook exists
+Test-Path .git/hooks/pre-commit
+
+# Re-run installer
+.\install.ps1
+```
+
+**macOS/Linux:**
 ```sh
 # Check if executable
 ls -la .git/hooks/pre-commit
@@ -799,6 +543,34 @@ chmod +x .git/hooks/pre-commit
 - Bypass for large refactors: `git commit --no-verify`
 </details>
 
+<details>
+<summary><strong>PowerShell execution policy error</strong></summary>
+
+```powershell
+# Allow script execution for current user
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
+```
+</details>
+
+<details>
+<summary><strong>"Too many arguments" or argument length errors (Windows)</strong></summary>
+
+Windows has a command-line argument length limit of ~8,191 characters. The PowerShell script automatically handles this by:
+1. Checking prompt length before invocation
+2. Using stdin piping (`copilot -p -`) for large prompts
+3. Writing prompts to temp files when needed
+
+If you still encounter issues:
+```powershell
+# Reduce diff size by committing smaller changes
+git add -p  # Stage partial changes
+
+# Or increase MAX_DIFF_SIZE in pre-commit.ps1 if your prompts are within limits
+# Default: $MAX_DIFF_SIZE = 20000  (bytes)
+# Default: $MAX_ARG_LENGTH = 7000  (characters)
+```
+</details>
+
 ---
 
 ## 📄 License
@@ -806,5 +578,4 @@ chmod +x .git/hooks/pre-commit
 MIT License - See [LICENSE](LICENSE) for details.
 
 ---
-
 

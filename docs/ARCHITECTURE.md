@@ -1,6 +1,6 @@
 # Architecture Overview
 
-This document describes the system design and data flow of the CLI-Based AI Java Code Review system.
+This document describes the system design and data flow of the CLI-Based AI Java Code Review system with **multi-agent architecture**.
 
 ## System Components
 
@@ -14,38 +14,79 @@ flowchart TB
         B --> C{Java files staged?}
         C -->|No| D[Skip Review]
         C -->|Yes| E[Extract Diff]
-        E --> F[Security Check]
-        F --> G[Build Prompt]
+        E --> F[Security Pre-Check]
+        F --> G[Launch Agents]
     end
     
-    subgraph AIReview[AI Review]
-        G --> H[Copilot CLI]
-        H --> I[Parse JSON Response]
+    subgraph MultiAgent[Multi-Agent Review - Parallel Execution]
+        G --> H1[Security Agent]
+        G --> H2[Naming Agent]
+        G --> H3[Quality Agent]
+        H1 --> I1[security/review.json]
+        H2 --> I2[naming/review.json]
+        H3 --> I3[quality/review.json]
+    end
+    
+    subgraph Aggregation[Result Aggregation]
+        I1 --> J[Summarizer Agent]
+        I2 --> J
+        I3 --> J
+        J --> K[Final Report]
     end
     
     subgraph Decision[Decision Engine]
-        I --> J{BLOCK issues?}
-        J -->|Yes| K[Reject Commit]
-        J -->|No| L{WARN issues?}
-        L -->|Yes| M[Show Warnings]
-        M --> N[Allow Commit]
-        L -->|No| N
+        K --> L{BLOCK issues?}
+        L -->|Yes| M[Reject Commit]
+        L -->|No| N{WARN issues?}
+        N -->|Yes| O[Show Warnings]
+        O --> P[Allow Commit]
+        N -->|No| P
     end
     
-    D --> O[Continue to Commit]
-    N --> O
+    D --> Q[Continue to Commit]
+    P --> Q
 ```
+
+## Multi-Agent Architecture
+
+The system uses 4 specialized agents running in parallel for faster, more thorough reviews:
+
+| Agent | Focus | Severity | Parallel |
+|-------|-------|----------|----------|
+| **Security Agent** | OWASP Top 10, hardcoded secrets, injection attacks | BLOCK | Yes |
+| **Naming Agent** | Java naming conventions (PascalCase, camelCase) | INFO | Yes |
+| **Quality Agent** | NPE risks, thread safety, exception handling | BLOCK/WARN | Yes |
+| **Summarizer Agent** | Aggregates, deduplicates, prioritizes findings | N/A | No (runs after others) |
+
+**Performance**: ~3x faster than sequential execution (~15s vs ~45s)
+
+## Platform Support
+
+| Platform | Script | Parallel Execution |
+|----------|--------|--------------------|
+| **Windows** | `pre-commit.ps1` | PowerShell Jobs (`Start-Job`) |
+| **macOS** | `pre-commit.sh` | Background processes (`&`) |
+| **Linux** | `pre-commit.sh` | Background processes (`&`) |
 
 ## File Responsibilities
 
 | File | Purpose | Type |
 |------|---------|------|
-| `pre-commit.sh` | Hook entry point, orchestrates the review workflow | Executable |
-| `.ai/java_code_review_checklist.yaml` | Review rules configuration with OWASP references | Config |
-| `.ai/java_review_prompt.txt` | AI prompt template with security boundaries | Template |
-| `.ai/last_review.json` | Most recent review output (generated) | Output |
-| `.ai/last_review_raw.txt` | Raw AI response for debugging (generated) | Debug |
-| `install.sh` | One-command setup for hook installation | Executable |
+| `pre-commit.ps1` | Hook entry point for Windows (PowerShell) | Executable |
+| `pre-commit.sh` | Hook entry point for macOS/Linux (bash) | Executable |
+| `install.ps1` | Windows installation script | Executable |
+| `install.sh` | macOS/Linux installation script | Executable |
+| `.ai/agents/security/checklist.yaml` | Security rules (OWASP) | Config |
+| `.ai/agents/security/prompt.txt` | Security agent prompt | Template |
+| `.ai/agents/naming/checklist.yaml` | Naming convention rules | Config |
+| `.ai/agents/naming/prompt.txt` | Naming agent prompt | Template |
+| `.ai/agents/quality/checklist.yaml` | Code quality rules | Config |
+| `.ai/agents/quality/prompt.txt` | Quality agent prompt | Template |
+| `.ai/agents/summarizer/prompt.txt` | Summarizer prompt | Template |
+| `.ai/agents/*/review.json` | Agent outputs (markdown format) | Output |
+| `.ai/last_review.json` | Final aggregated review | Output |
+
+**Note**: Agent output files use `.json` extension for historical reasons but contain markdown format.
 
 ## Data Flow
 
@@ -59,22 +100,36 @@ flowchart TB
 - Warn user if potential sensitive data detected
 - User can abort or continue
 
-### 3. Prompt Composition
+### 3. Multi-Agent Analysis (Parallel)
+
 ```
-┌─────────────────────────────────────────┐
-│ Prompt Template (.ai/java_review_prompt.txt)  │
-│   + Checklist Rules (YAML)              │
-│   + Git Diff Content                    │
-│   = Complete Review Prompt              │
-└─────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│                    PARALLEL EXECUTION                        │
+├─────────────────┬─────────────────┬─────────────────────────┤
+│ Security Agent  │ Naming Agent    │ Quality Agent           │
+│ + checklist     │ + checklist     │ + checklist             │
+│ + prompt        │ + prompt        │ + prompt                │
+│ + diff          │ + diff          │ + diff                  │
+│       ↓         │       ↓         │       ↓                 │
+│ review.json     │ review.json     │ review.json             │
+└─────────────────┴─────────────────┴─────────────────────────┘
+                            │
+                            ↓
+              ┌─────────────────────────┐
+              │   Summarizer Agent      │
+              │   - Aggregate reports   │
+              │   - Deduplicate issues  │
+              │   - Prioritize by       │
+              │     severity            │
+              └───────────┬─────────────┘
+                          ↓
+              ┌─────────────────────────┐
+              │   last_review.json      │
+              │   (Final Report)        │
+              └─────────────────────────┘
 ```
 
-### 4. AI Analysis
-- Send composed prompt to GitHub Copilot CLI
-- Receive JSON response with issues
-- Parse and validate JSON structure
-
-### 5. Decision Engine
+### 4. Decision Engine
 ```
 BLOCK issues found? → Reject commit, show errors
 Only WARN/INFO?    → Allow commit, show warnings
@@ -87,8 +142,8 @@ No issues?         → Allow commit silently
 |---------|----------|---------|-------------|
 | `AI_REVIEW_ENABLED` | Environment | `true` | Enable/disable review |
 | `SKIP_SENSITIVE_CHECK` | Environment | `false` | Skip sensitive data warning |
-| `MAX_DIFF_SIZE` | `pre-commit.sh` | 20000 bytes | Maximum diff size |
-| `FORCE_COLOR` | Environment | `false` | Force colored output |
+| `MAX_DIFF_SIZE` | Script | 20000 bytes | Maximum diff size |
+| `FORCE_COLOR` | Environment | `false` | Force colored output (bash) |
 
 ## Error Handling
 
@@ -97,7 +152,8 @@ flowchart LR
     A[Error Occurs] --> B{Error Type}
     B -->|Missing dependency| C[Show install instructions]
     B -->|AI unavailable| D[Allow commit with warning]
-    B -->|JSON parse error| E[Allow commit, log raw response]
+    B -->|All agents fail| D
+    B -->|Parse error| E[Allow commit, show raw output]
     B -->|Network timeout| D
 ```
 
@@ -114,7 +170,47 @@ The system implements multiple security layers:
 
 To extend the system:
 
-1. **Add rules**: Edit `.ai/java_code_review_checklist.yaml`
-2. **Modify prompt**: Edit `.ai/java_review_prompt.txt`
-3. **Change AI provider**: Modify the Copilot CLI call in `pre-commit.sh`
-4. **Add languages**: Create new checklist/prompt files and update hook
+1. **Add a new agent**: Create `.ai/agents/<name>/` with `checklist.yaml` and `prompt.txt`
+2. **Modify rules**: Edit `checklist.yaml` in any agent directory
+3. **Customize prompts**: Edit `prompt.txt` in any agent directory
+4. **Change AI provider**: Modify the Copilot CLI call in `pre-commit.ps1` or `pre-commit.sh`
+5. **Add languages**: Create new agent configurations for other languages
+
+## Windows Implementation Details
+
+The PowerShell implementation (`pre-commit.ps1`) uses:
+
+- **PowerShell Jobs** for parallel agent execution
+- **Start-Job** / **Wait-Job** / **Receive-Job** pattern
+- **Temporary files** for passing diff content to jobs
+- **UTF-8 encoding** throughout for proper Unicode support
+
+```powershell
+# Example: Parallel agent execution
+$SecurityJob = Start-Job -ScriptBlock { ... } -ArgumentList $args
+$NamingJob = Start-Job -ScriptBlock { ... } -ArgumentList $args
+$QualityJob = Start-Job -ScriptBlock { ... } -ArgumentList $args
+
+Wait-Job -Job @($SecurityJob, $NamingJob, $QualityJob) -Timeout 120
+```
+
+## macOS/Linux Implementation Details
+
+The bash implementation (`pre-commit.sh`) uses:
+
+- **Background processes** for parallel agent execution
+- `&` operator and `wait` command
+- **Trap handlers** for cleanup on exit
+- **POSIX-compliant** syntax for maximum portability
+
+```bash
+# Example: Parallel agent execution
+run_agent "security" "$DIFF_CONTENT" &
+SECURITY_PID=$!
+run_agent "naming" "$DIFF_CONTENT" &
+NAMING_PID=$!
+run_agent "quality" "$DIFF_CONTENT" &
+QUALITY_PID=$!
+
+wait $SECURITY_PID $NAMING_PID $QUALITY_PID
+```

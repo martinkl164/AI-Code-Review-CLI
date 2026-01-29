@@ -4,6 +4,11 @@
 
 Successfully transformed the single-agent code review system into a multi-agent architecture with 3 specialized agents running in parallel + 1 summarizer agent.
 
+**Platform Support:**
+- ✅ Windows (Native PowerShell)
+- ✅ macOS (Bash)
+- ✅ Linux (Bash)
+
 ## 📊 Results from Test Run
 
 ```
@@ -12,21 +17,21 @@ Multi-Agent Code Review System
 ============================================
 
 [AI Review] Launching specialized agents in parallel...
-  → Security Agent (checking OWASP vulnerabilities, hardcoded secrets, injection attacks)
-  → Naming Agent (checking Java conventions: PascalCase, camelCase, UPPER_SNAKE_CASE)
-  → Code Quality Agent (checking correctness, thread safety, exception handling)
+  -> Security Agent (checking OWASP vulnerabilities, hardcoded secrets, injection attacks)
+  -> Naming Agent (checking Java conventions: PascalCase, camelCase, UPPER_SNAKE_CASE)
+  -> Code Quality Agent (checking correctness, thread safety, exception handling)
 
-[AI Review] ⏳ Security Agent: Running...
-[AI Review] ⏳ Naming Agent: Running...
-[AI Review] ⏳ Code Quality Agent: Running...
+[AI Review] -> Security Agent: Running...
+[AI Review] -> Naming Agent: Running...
+[AI Review] -> Code Quality Agent: Running...
 
-[AI Review] ✓ Security Agent: Complete (found 4 issues)
-[AI Review] ✓ Naming Agent: Complete (found 10 issues)
-[AI Review] ✓ Code Quality Agent: Complete (found 11 issues)
+[AI Review] -> Security Agent: Complete (found 4 issues)
+[AI Review] -> Naming Agent: Complete (found 10 issues)
+[AI Review] -> Code Quality Agent: Complete (found 11 issues)
 
 [AI Review] Aggregating results from all agents...
-[AI Review] ⏳ Summarizer Agent: Deduplicating and prioritizing findings...
-[AI Review] ✓ Summarizer Agent: Complete
+[AI Review] -> Summarizer Agent: Deduplicating and prioritizing findings...
+[AI Review] -> Summarizer Agent: Complete
 ```
 
 ### Issues Found by Agents
@@ -95,7 +100,21 @@ Multi-Agent Code Review System
 
 ## 🔧 Technical Implementation
 
-### 1. Parallel Execution (Bash Background Jobs)
+### 1. Parallel Execution
+
+#### Windows (PowerShell Jobs)
+
+```powershell
+# Launch agents in parallel
+$SecurityJob = Start-Job -ScriptBlock { ... } -ArgumentList $args
+$NamingJob = Start-Job -ScriptBlock { ... } -ArgumentList $args
+$QualityJob = Start-Job -ScriptBlock { ... } -ArgumentList $args
+
+# Wait for all to complete
+Wait-Job -Job @($SecurityJob, $NamingJob, $QualityJob) -Timeout 120
+```
+
+#### macOS/Linux (Bash Background Jobs)
 
 ```bash
 # Launch agents in parallel
@@ -114,8 +133,11 @@ wait $SECURITY_PID $NAMING_PID $QUALITY_PID
 
 ### 2. Cross-Platform Support
 
-**Windows (PowerShell)**: Creates temporary PowerShell scripts for each agent
-**Unix/macOS (Bash)**: Direct copilot CLI calls
+| Platform | Script | Parallel Mechanism |
+|----------|--------|-------------------|
+| **Windows** | `pre-commit.ps1` | PowerShell Jobs (`Start-Job`, `Wait-Job`) |
+| **macOS** | `pre-commit.sh` | Background processes (`&`, `wait`) |
+| **Linux** | `pre-commit.sh` | Background processes (`&`, `wait`) |
 
 ### 3. User Feedback System
 
@@ -160,7 +182,7 @@ Comprehensive logging at every stage:
 
 ### ✅ Comprehensive Logging
 - Shows which agents are launching
-- Shows agent progress (⏳ Running, ✓ Complete)
+- Shows agent progress (-> Running, Complete)
 - Shows issue counts per agent
 - Shows per-agent results
 - Shows final aggregated summary
@@ -177,7 +199,7 @@ Comprehensive logging at every stage:
 
 ## 🧪 Testing Results
 
-### Test Scenario: Commit examples/test.java
+### Test Scenario: Commit examples/BadClass.java
 
 **File contains**: 185 lines with intentional issues (security, naming, quality)
 
@@ -220,10 +242,10 @@ Result: Single comprehensive review
 ### After (Multi-Agent)
 ```
 [AI Review] Launching specialized agents in parallel...
-  → Security Agent: ~10s
-  → Naming Agent: ~8s
-  → Code Quality Agent: ~12s
-  → Summarizer: ~5s
+  -> Security Agent: ~10s
+  -> Naming Agent: ~8s
+  -> Code Quality Agent: ~12s
+  -> Summarizer: ~5s
 ⏱️ ~15 seconds total (parallel execution)
 
 Result: Specialized reviews + aggregated summary
@@ -234,44 +256,56 @@ Result: Specialized reviews + aggregated summary
 ## 🎯 Success Criteria Met
 
 - ✅ **Multiple specialized agents** (Security, Naming, Quality)
-- ✅ **Parallel execution** (background jobs with & and wait)
+- ✅ **Parallel execution** (PowerShell Jobs on Windows, background jobs on Unix)
 - ✅ **Summarizer agent** (aggregates, deduplicates, prioritizes)
 - ✅ **User progress indicators** (detailed logging at each stage)
-- ✅ **Comprehensive testing** (verified with examples/test.java)
+- ✅ **Comprehensive testing** (verified with examples/BadClass.java)
 - ✅ **AI validation** (all agents call Copilot, get markdown responses)
 - ✅ **Gitignore protection** (review output files excluded)
 - ✅ **Demo files kept** (original YAML/prompt preserved)
-- ✅ **No external dependencies** (no `jq` required - uses native bash/grep/sed parsing)
+- ✅ **No external dependencies** (no `jq` required - uses native parsing)
+- ✅ **Native Windows support** (PowerShell, no WSL required)
 
 ## 🚀 Usage
 
-### Standard Commit (Multi-Agent Review)
-```bash
+### Windows (PowerShell)
+
+```powershell
+# Standard Commit (Multi-Agent Review)
 git add MyCode.java
 git commit -m "Add feature"
 # Multi-agent review runs automatically
-```
 
-### Skip Review (Emergency)
-```bash
+# Skip Review (Emergency)
 git commit --no-verify -m "Hotfix"
+
+# View Last Review
+Get-Content .ai/agents/security/review.json
+Get-Content .ai/agents/naming/review.json
+Get-Content .ai/agents/quality/review.json
 ```
 
-### View Last Review
-```bash
-# Agent reports are now in markdown format
-cat .ai/agents/security/review.json
-cat .ai/agents/naming/review.json
-cat .ai/agents/quality/review.json
+### macOS/Linux (Bash)
 
-# Or view with less for better readability
-less .ai/agents/security/review.json
+```bash
+# Standard Commit (Multi-Agent Review)
+git add MyCode.java
+git commit -m "Add feature"
+# Multi-agent review runs automatically
+
+# Skip Review (Emergency)
+git commit --no-verify -m "Hotfix"
+
+# View Last Review
+cat .ai/agents/security/review.json
+less .ai/agents/naming/review.json
 ```
 
 ## 📚 Documentation
 
-- **Main README.md**: Overview and quick start
+- **README.md**: Overview and quick start
 - **.ai/agents/README.md**: Detailed multi-agent architecture
+- **docs/ARCHITECTURE.md**: System design and data flow
 - **MULTI_AGENT_IMPLEMENTATION.md**: This implementation summary
 
 ## 🎉 Conclusion
@@ -283,5 +317,6 @@ Successfully implemented a production-ready multi-agent code review system that:
 3. **Informs users clearly** via comprehensive logging
 4. **Protects git repo** via proper gitignore configuration
 5. **Maintains backward compatibility** via demo file preservation
+6. **Works natively on Windows** via PowerShell (no WSL required)
 
 The system is fully functional, tested, and ready for use!
