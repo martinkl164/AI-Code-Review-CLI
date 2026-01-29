@@ -46,19 +46,7 @@ else
   echo "${GREEN}✓ GitHub CLI (gh) found${NC}"
 fi
 
-# Check for jq
-if ! command -v jq >/dev/null 2>&1; then
-  echo "${RED}✗ jq not found${NC}"
-  echo ""
-  echo "Please install jq:"
-  echo "  - Windows: winget install jqlang.jq"
-  echo "  - macOS:   brew install jq"
-  echo "  - Linux:   apt install jq (or equivalent)"
-  echo ""
-  exit 1
-else
-  echo "${GREEN}✓ jq found${NC}"
-fi
+# Note: jq is no longer required since we switched to markdown output parsing
 
 # Check for gh copilot extension
 if ! gh extension list | grep -q "github/gh-copilot"; then

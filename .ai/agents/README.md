@@ -280,7 +280,8 @@ Final Summary
 
 ### Parse error in results
 - Check agent output: `cat .ai/agents/security/review.json`
-- Verify JSON is valid: `jq . .ai/agents/security/review.json`
+- Output is in markdown format (despite .json extension)
+- Verify markdown structure with: `less .ai/agents/security/review.json`
 
 ### Agents running sequentially instead of parallel
 - Verify bash version supports background jobs: `bash --version`

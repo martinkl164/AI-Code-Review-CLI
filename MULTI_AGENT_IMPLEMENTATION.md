@@ -63,22 +63,24 @@ Multi-Agent Code Review System
 │   ├── security/
 │   │   ├── checklist.yaml          ✅ Committed (8 BLOCK-severity rules)
 │   │   ├── prompt.txt              ✅ Committed (Security-focused)
-│   │   └── review.json             ❌ Gitignored (Generated)
+│   │   └── review.json             ❌ Gitignored (Generated markdown output)
 │   ├── naming/
 │   │   ├── checklist.yaml          ✅ Committed (1 INFO-severity rule)
 │   │   ├── prompt.txt              ✅ Committed (Naming-focused)
-│   │   └── review.json             ❌ Gitignored (Generated)
+│   │   └── review.json             ❌ Gitignored (Generated markdown output)
 │   ├── quality/
 │   │   ├── checklist.yaml          ✅ Committed (7 rules: 2 BLOCK, 5 WARN)
 │   │   ├── prompt.txt              ✅ Committed (Quality-focused)
-│   │   └── review.json             ❌ Gitignored (Generated)
+│   │   └── review.json             ❌ Gitignored (Generated markdown output)
 │   ├── summarizer/
 │   │   └── prompt.txt              ✅ Committed (Aggregation logic)
 │   └── README.md                   ✅ Documentation
 ├── java_code_review_checklist.yaml ✅ Kept for demo
 ├── java_review_prompt.txt          ✅ Kept for demo
-└── last_review.json                ❌ Gitignored (Final result)
+└── last_review.json                ❌ Gitignored (Final markdown summary)
 ```
+
+**Note:** Despite the `.json` file extension, agent outputs are now in **markdown format** for easier parsing without external tools like `jq`.
 
 ### Agent Specializations
 
@@ -164,7 +166,7 @@ Comprehensive logging at every stage:
 - Shows final aggregated summary
 
 ### ✅ Gitignore Configuration
-- Review JSON files excluded from git
+- Review output files (`.json` extension but contain markdown) excluded from git
 - Configuration files (YAML, prompts) committed
 - Verified with `git check-ignore`
 
@@ -236,9 +238,10 @@ Result: Specialized reviews + aggregated summary
 - ✅ **Summarizer agent** (aggregates, deduplicates, prioritizes)
 - ✅ **User progress indicators** (detailed logging at each stage)
 - ✅ **Comprehensive testing** (verified with examples/test.java)
-- ✅ **AI validation** (all agents call Copilot, get valid JSON responses)
-- ✅ **Gitignore protection** (review.json files excluded)
+- ✅ **AI validation** (all agents call Copilot, get markdown responses)
+- ✅ **Gitignore protection** (review output files excluded)
 - ✅ **Demo files kept** (original YAML/prompt preserved)
+- ✅ **No external dependencies** (no `jq` required - uses native bash/grep/sed parsing)
 
 ## 🚀 Usage
 
@@ -256,10 +259,13 @@ git commit --no-verify -m "Hotfix"
 
 ### View Last Review
 ```bash
-cat .ai/last_review.json | jq '.'
-cat .ai/agents/security/review.json | jq '.'
-cat .ai/agents/naming/review.json | jq '.'
-cat .ai/agents/quality/review.json | jq '.'
+# Agent reports are now in markdown format
+cat .ai/agents/security/review.json
+cat .ai/agents/naming/review.json
+cat .ai/agents/quality/review.json
+
+# Or view with less for better readability
+less .ai/agents/security/review.json
 ```
 
 ## 📚 Documentation
