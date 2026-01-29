@@ -1,0 +1,27 @@
+# Naming Conventions Agent Checklist
+# Version: 1.0.0
+# Last Updated: 2026-01-29
+# Focus: Java Naming Conventions and Code Style
+
+metadata:
+  version: "1.0.0"
+  language: "java"
+  agent: "naming"
+  focus: "Java naming conventions and code style standards"
+
+rules:
+  # =============================================================================
+  # INFO Severity - Style and Convention Violations (Allows Commit)
+  # =============================================================================
+
+  - id: naming-conventions
+    category: style
+    description: "Check for violations of Java naming conventions."
+    severity: INFO
+    details: |
+      Java Naming Conventions:
+      - Classes and Interfaces: PascalCase (e.g., UserService, DataProcessor)
+      - Methods and Variables: camelCase (e.g., getUserName, processData)
+      - Constants: UPPER_SNAKE_CASE (e.g., MAX_COUNT, API_VERSION)
+      - Packages: lowercase with dots (e.g., com.example.service)
+      - Avoid: Hungarian notation (strName), underscores in methods (get_user), single letters except loop counters

@@ -77,6 +77,186 @@ cleanup() {
 }
 trap cleanup EXIT
 
+# =============================================================================
+# MULTI-AGENT HELPER FUNCTIONS
+# =============================================================================
+
+# Run a specialized agent (security, naming, quality)
+# Args: $1 = agent_name, $2 = diff_content
+run_agent() {
+  local AGENT_NAME="$1"
+  local DIFF_CONTENT="$2"
+  local AGENT_DIR="$AI_DIR/agents/$AGENT_NAME"
+  local AGENT_CHECKLIST="$AGENT_DIR/checklist.yaml"
+  local AGENT_PROMPT="$AGENT_DIR/prompt.txt"
+  local AGENT_OUTPUT="$AGENT_DIR/review.json"
+  
+  # Check if agent files exist
+  if [ ! -f "$AGENT_CHECKLIST" ] || [ ! -f "$AGENT_PROMPT" ]; then
+    echo "${RED}[AI Review] Error: Agent '$AGENT_NAME' configuration not found${NC}" >&2
+    echo '{"agent":"'$AGENT_NAME'","issues":[],"summary":"Configuration error"}' > "$AGENT_OUTPUT"
+    return 1
+  fi
+  
+  # Load checklist and compose prompt
+  local CHECKLIST_CONTENT=$(cat "$AGENT_CHECKLIST")
+  local AGENT_FULL_PROMPT=$(awk -v checklist="$CHECKLIST_CONTENT" -v diff="$DIFF_CONTENT" '
+    /\{checklist\}/ {
+      print checklist;
+      next;
+    }
+    /\{diff\}/ {
+      print diff;
+      next;
+    }
+    { print }
+  ' "$AGENT_PROMPT")
+  
+  # Call Copilot CLI based on platform
+  if [ -d "/c/Users" ]; then
+    # Windows (Git Bash) - use PowerShell
+    mkdir -p "$AI_DIR/temp"
+    local DIFF_FILE_PS="$AI_DIR/temp/${AGENT_NAME}_diff_$$.txt"
+    echo "$DIFF_CONTENT" > "$DIFF_FILE_PS"
+    
+    local PS_RUNNER="$AI_DIR/temp/${AGENT_NAME}_runner_$$.ps1"
+    cat > "$PS_RUNNER" << 'PSEOF'
+param([string]$DiffFile, [string]$AgentName)
+
+$diffContent = Get-Content -LiteralPath $DiffFile -Raw -ErrorAction SilentlyContinue
+if (-not $diffContent) { Write-Output '{"agent":"'+$AgentName+'","issues":[],"summary":"Error reading diff"}'; exit 1 }
+
+$cleanDiff = $diffContent -replace "`r`n", " " -replace "`n", " " -replace '"', "'" -replace '\s+', ' '
+$cleanDiff = $cleanDiff.Substring(0, [Math]::Min(2000, $cleanDiff.Length))
+
+$prompt = "Review this Java code as $AgentName agent. Return JSON: {agent:'$AgentName',issues:[{severity:string,type:string,description:string}]}. Code: $cleanDiff"
+
+try {
+    $argList = @('-p', $prompt, '--silent', '--allow-all-tools', '--no-color')
+    $result = & copilot @argList 2>&1
+    Write-Output $result
+} catch {
+    Write-Output '{"agent":"'+$AgentName+'","issues":[],"summary":"API error"}'
+}
+PSEOF
+    
+    local WIN_DIFF=$(powershell.exe -NoProfile -Command "(Resolve-Path '$DIFF_FILE_PS').Path" 2>/dev/null | tr -d '\r\n')
+    local WIN_RUNNER=$(powershell.exe -NoProfile -Command "(Resolve-Path '$PS_RUNNER').Path" 2>/dev/null | tr -d '\r\n')
+    
+    local REVIEW_OUTPUT=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_RUNNER" -DiffFile "$WIN_DIFF" -AgentName "$AGENT_NAME" 2>&1)
+    
+    rm -f "$DIFF_FILE_PS" "$PS_RUNNER"
+  else
+    # Unix - call copilot directly
+    local FULL_PROMPT="$AGENT_FULL_PROMPT
+
+CRITICAL: Output ONLY valid JSON."
+    REVIEW_OUTPUT=$(copilot -p "$FULL_PROMPT" --silent --allow-all-tools --no-color 2>&1 || echo '{"agent":"'$AGENT_NAME'","issues":[],"summary":"API error"}')
+  fi
+  
+  # Extract JSON from response
+  local REVIEW_JSON=$(echo "$REVIEW_OUTPUT" | sed -n '/```json/,/```/p' | sed '1d;$d' | tr -d '\n' || echo "")
+  if [ -z "$REVIEW_JSON" ]; then
+    REVIEW_JSON=$(echo "$REVIEW_OUTPUT" | grep -o '{.*}' | head -1 || echo '{"agent":"'$AGENT_NAME'","issues":[],"summary":"Parse error"}')
+  fi
+  
+  # Save agent output
+  mkdir -p "$AGENT_DIR"
+  echo "$REVIEW_JSON" > "$AGENT_OUTPUT"
+}
+
+# Run summarizer agent to aggregate all results
+# Args: $1 = security_json, $2 = naming_json, $3 = quality_json
+run_summarizer_agent() {
+  local SECURITY_JSON="$1"
+  local NAMING_JSON="$2"
+  local QUALITY_JSON="$3"
+  local SUMMARIZER_PROMPT="$AI_DIR/agents/summarizer/prompt.txt"
+  
+  if [ ! -f "$SUMMARIZER_PROMPT" ]; then
+    echo "${RED}[AI Review] Error: Summarizer prompt not found${NC}" >&2
+    return 1
+  fi
+  
+  # Compose summarizer prompt
+  local SUMMARIZER_FULL_PROMPT=$(awk -v sec="$SECURITY_JSON" -v nam="$NAMING_JSON" -v qual="$QUALITY_JSON" '
+    /\{security_report\}/ {
+      print sec;
+      next;
+    }
+    /\{naming_report\}/ {
+      print nam;
+      next;
+    }
+    /\{quality_report\}/ {
+      print qual;
+      next;
+    }
+    { print }
+  ' "$SUMMARIZER_PROMPT")
+  
+  # Call Copilot CLI
+  if [ -d "/c/Users" ]; then
+    # Windows PowerShell
+    mkdir -p "$AI_DIR/temp"
+    local PS_RUNNER="$AI_DIR/temp/summarizer_runner_$$.ps1"
+    cat > "$PS_RUNNER" << 'PSEOF'
+param([string]$Prompt)
+try {
+    $argList = @('-p', $Prompt, '--silent', '--allow-all-tools', '--no-color')
+    $result = & copilot @argList 2>&1
+    Write-Output $result
+} catch {
+    Write-Output '{"agent":"summarizer","issues":[],"summary":"API error","recommendation":"ALLOW_COMMIT"}'
+}
+PSEOF
+    
+    local WIN_RUNNER=$(powershell.exe -NoProfile -Command "(Resolve-Path '$PS_RUNNER').Path" 2>/dev/null | tr -d '\r\n')
+    SUMMARIZER_OUTPUT=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_RUNNER" -Prompt "$SUMMARIZER_FULL_PROMPT" 2>&1)
+    rm -f "$PS_RUNNER"
+  else
+    # Unix
+    local FULL_PROMPT="$SUMMARIZER_FULL_PROMPT
+
+CRITICAL: Output ONLY valid JSON."
+    SUMMARIZER_OUTPUT=$(copilot -p "$FULL_PROMPT" --silent --allow-all-tools --no-color 2>&1 || echo '{"agent":"summarizer","issues":[],"summary":"API error","recommendation":"ALLOW_COMMIT"}')
+  fi
+  
+  # Extract JSON
+  local SUMMARIZER_JSON=$(echo "$SUMMARIZER_OUTPUT" | sed -n '/```json/,/```/p' | sed '1d;$d' | tr -d '\n' || echo "")
+  if [ -z "$SUMMARIZER_JSON" ]; then
+    SUMMARIZER_JSON=$(echo "$SUMMARIZER_OUTPUT" | grep -o '{.*}' | head -1 || echo '{"agent":"summarizer","issues":[],"summary":"Parse error","recommendation":"ALLOW_COMMIT"}')
+  fi
+  
+  # Save final review
+  echo "$SUMMARIZER_JSON" > "$LAST_REVIEW_FILE"
+  echo "$SUMMARIZER_JSON"
+}
+
+# Display agent results summary
+# Args: $1 = agent_json, $2 = agent_name, $3 = agent_display_name
+display_agent_results() {
+  local AGENT_JSON="$1"
+  local AGENT_NAME="$2"
+  local AGENT_DISPLAY="$3"
+  
+  local ISSUE_COUNT=$(echo "$AGENT_JSON" | jq -r '.issues | length' 2>/dev/null || echo "0")
+  local SUMMARY=$(echo "$AGENT_JSON" | jq -r '.summary' 2>/dev/null || echo "No summary")
+  
+  echo ""
+  echo "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo "${BLUE}$AGENT_DISPLAY Agent Results${NC}"
+  echo "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+  echo "  Summary: $SUMMARY"
+  echo "  Issues found: $ISSUE_COUNT"
+  
+  if [ "$ISSUE_COUNT" -gt 0 ]; then
+    echo ""
+    echo "$AGENT_JSON" | jq -r '.issues[] | 
+      "  [\(.severity)] \(.file):\(.line)\n    → \(.message)\n"' 2>/dev/null || echo "  (Unable to parse issues)"
+  fi
+}
+
 # Check if AI review is enabled (can be disabled with environment variable)
 if [ "$AI_REVIEW_ENABLED" = "false" ]; then
   echo "${BLUE}[AI Review]${NC} Skipped (AI_REVIEW_ENABLED=false)"
@@ -188,9 +368,9 @@ fi
 if [ "$SKIP_SENSITIVE_CHECK" != "true" ]; then
   if grep -qiE "(password\s*=|secret\s*=|api[_-]?key\s*=|token\s*=|credential|private[_-]?key)" "$DIFF_FILE"; then
     echo ""
-    echo "${YELLOW}╔═══════════════════════════════════════════════════════════╗${NC}"
-    echo "${YELLOW}║  SECURITY WARNING: Potential sensitive data detected      ║${NC}"
-    echo "${YELLOW}╚═══════════════════════════════════════════════════════════╝${NC}"
+    echo "${YELLOW}ΓòöΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòù${NC}"
+    echo "${YELLOW}Γòæ  SECURITY WARNING: Potential sensitive data detected      Γòæ${NC}"
+    echo "${YELLOW}ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥${NC}"
     echo ""
     echo "Your staged code may contain sensitive keywords (password, secret, api_key, etc.)."
     echo "This code will be sent to an external AI service for review."
@@ -211,147 +391,122 @@ if [ "$SKIP_SENSITIVE_CHECK" != "true" ]; then
 fi
 
 DIFF_CONTENT=$(cat "$DIFF_FILE")
-CHECKLIST_CONTENT=$(cat "$CHECKLIST_FILE")
 
-# Compose prompt for GitHub Copilot using awk for proper substitution
-REVIEW_PROMPT=$(awk -v checklist="$CHECKLIST_CONTENT" -v diff="$DIFF_CONTENT" '
-  /\{checklist\}/ {
-    print checklist;
-    next;
-  }
-  /\{diff\}/ {
-    print diff;
-    next;
-  }
-  { print }
-' "$PROMPT_FILE")
+# =============================================================================
+# MULTI-AGENT CODE REVIEW
+# =============================================================================
 
-printf "${BLUE}[AI Review]${NC} Sending code to Copilot CLI for analysis...\n"
+echo ""
+echo "${BLUE}============================================${NC}"
+echo "${BLUE}Multi-Agent Code Review System${NC}"
+echo "${BLUE}============================================${NC}"
+echo ""
+echo "${BLUE}[AI Review]${NC} Launching specialized agents in parallel..."
+echo "  → Security Agent (checking OWASP vulnerabilities, hardcoded secrets, injection attacks)"
+echo "  → Naming Agent (checking Java conventions: PascalCase, camelCase, UPPER_SNAKE_CASE)"
+echo "  → Code Quality Agent (checking correctness, thread safety, exception handling)"
+echo ""
 
-# Call Standalone Copilot CLI
+# Run agents in parallel
+echo "${BLUE}[AI Review]${NC} ⏳ Security Agent: Running..."
+run_agent "security" "$DIFF_CONTENT" &
+SECURITY_PID=$!
 
-# On Windows (Git Bash), use PowerShell script
-if [ -d "/c/Users" ]; then
-  mkdir -p "$AI_DIR/temp"
-  
-  # Save diff to file  
-  DIFF_FILE_PS="$AI_DIR/temp/review_diff_$$.txt"
-  echo "$DIFF_CONTENT" > "$DIFF_FILE_PS"
-  
-  # Create a self-contained PowerShell script that does everything
-  PS_RUNNER="$AI_DIR/temp/run_review_$$.ps1"
-  cat > "$PS_RUNNER" << 'PSEOF'
-param([string]$DiffFile)
+echo "${BLUE}[AI Review]${NC} ⏳ Naming Agent: Running..."
+run_agent "naming" "$DIFF_CONTENT" &
+NAMING_PID=$!
 
-$diffContent = Get-Content -LiteralPath $DiffFile -Raw -ErrorAction SilentlyContinue
-if (-not $diffContent) { Write-Output "Error: Could not read diff file"; exit 1 }
+echo "${BLUE}[AI Review]${NC} ⏳ Code Quality Agent: Running..."
+run_agent "quality" "$DIFF_CONTENT" &
+QUALITY_PID=$!
 
-# Escape special characters and build a clean single-line prompt  
-$cleanDiff = $diffContent -replace "`r`n", " " -replace "`n", " " -replace '"', "'" -replace '\s+', ' '
-$cleanDiff = $cleanDiff.Substring(0, [Math]::Min(2000, $cleanDiff.Length))
+# Wait for all agents to complete
+wait $SECURITY_PID
+SECURITY_EXIT=$?
+wait $NAMING_PID
+NAMING_EXIT=$?
+wait $QUALITY_PID
+QUALITY_EXIT=$?
 
-$prompt = "Review this Java code for security issues. Return JSON: {issues:[{severity:CRITICAL,type:string,description:string}]}. Code: $cleanDiff"
-
-# Call copilot with properly escaped argument using --% to stop parsing
-try {
-    $argList = @('-p', $prompt, '--silent', '--allow-all-tools', '--no-color')
-    $result = & copilot @argList 2>&1
-    Write-Output $result
-} catch {
-    Write-Output "Error: $_"
-}
-PSEOF
-
-  # Get Windows paths
-  WIN_DIFF=$(powershell.exe -NoProfile -Command "(Resolve-Path '$DIFF_FILE_PS').Path" 2>/dev/null | tr -d '\r\n')
-  WIN_RUNNER=$(powershell.exe -NoProfile -Command "(Resolve-Path '$PS_RUNNER').Path" 2>/dev/null | tr -d '\r\n')
-  
-  # Run the PowerShell script
-  REVIEW_OUTPUT=$(powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$WIN_RUNNER" -DiffFile "$WIN_DIFF" 2>&1)
-  RETCODE=$?
-  
-  rm -f "$DIFF_FILE_PS" "$PS_RUNNER"
-else
-  # On Unix, call copilot directly
-  FULL_PROMPT="$REVIEW_PROMPT
-
-CRITICAL: Output ONLY valid JSON."
-  REVIEW_OUTPUT=$(copilot -p "$FULL_PROMPT" --silent --allow-all-tools --no-color 2>&1 || echo "")
-  RETCODE=$?
-fi
-
-# Check API availability and response
-if [ $RETCODE -ne 0 ] || [ -z "$REVIEW_OUTPUT" ]; then
+# Check if agents completed successfully
+if [ $SECURITY_EXIT -ne 0 ] && [ $NAMING_EXIT -ne 0 ] && [ $QUALITY_EXIT -ne 0 ]; then
   echo ""
-  printf "${YELLOW}╔═══════════════════════════════════════════════════════════╗${NC}\n"
-  printf "${YELLOW}║  GitHub Copilot CLI: NOT AVAILABLE                        ║${NC}\n"
-  printf "${YELLOW}╚═══════════════════════════════════════════════════════════╝${NC}\n"
-  echo ""
-  echo "API Status:"
-  echo "  • Standalone GitHub Copilot CLI: NOT RESPONDING"
-  echo "  • Command: copilot -p <prompt> --silent --allow-all-tools"
-  echo "  • Exit code: $RETCODE"
-  echo ""
-  echo "Possible reasons:"
-  echo "  1. GitHub Copilot subscription not active"
-  echo "  2. Copilot CLI not authenticated (run: copilot auth or copilot)"
-  echo "  3. Network connectivity issues"
-  echo "  4. CLI version outdated (run: copilot update)"
-  echo ""
-  echo "Alternative AI Review APIs:"
-  echo "  • OpenAI GPT-4: https://platform.openai.com/docs"
-  echo "  • Azure OpenAI: https://azure.microsoft.com/products/ai-services/openai-service"
-  echo "  • Claude (Anthropic): https://www.anthropic.com/api"
-  echo "  • Local LLM (Ollama): https://ollama.ai"
+  printf "${YELLOW}ΓòöΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòù${NC}\n"
+  printf "${YELLOW}Γòæ  Multi-Agent Review: NOT AVAILABLE                         Γòæ${NC}\n"
+  printf "${YELLOW}ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥${NC}\n"
   echo ""
   printf "${GREEN}[AI Review]${NC} Allowing commit (AI service unavailable - manual review recommended)\n"
   echo ""
   exit 0
 fi
 
-# Response received, process it
+# Read agent results
+SECURITY_JSON=$(cat "$AI_DIR/agents/security/review.json" 2>/dev/null || echo '{"agent":"security","issues":[],"summary":"Error"}')
+NAMING_JSON=$(cat "$AI_DIR/agents/naming/review.json" 2>/dev/null || echo '{"agent":"naming","issues":[],"summary":"Error"}')
+QUALITY_JSON=$(cat "$AI_DIR/agents/quality/review.json" 2>/dev/null || echo '{"agent":"quality","issues":[],"summary":"Error"}')
 
-# Save raw output for debugging
-echo "$REVIEW_OUTPUT" > "$AI_DIR/last_review_raw.txt"
+# Count issues per agent
+SECURITY_COUNT=$(echo "$SECURITY_JSON" | jq -r '.issues | length' 2>/dev/null || echo "0")
+NAMING_COUNT=$(echo "$NAMING_JSON" | jq -r '.issues | length' 2>/dev/null || echo "0")
+QUALITY_COUNT=$(echo "$QUALITY_JSON" | jq -r '.issues | length' 2>/dev/null || echo "0")
 
-# Try to extract JSON from the response
-# Copilot often wraps JSON in markdown code blocks: ```json ... ```
-# Method 1: Try to extract from markdown code block
-REVIEW_JSON=$(echo "$REVIEW_OUTPUT" | sed -n '/```json/,/```/p' | sed '1d;$d' | tr -d '\n' || echo "")
+echo "${BLUE}[AI Review]${NC} ✓ Security Agent: Complete (found $SECURITY_COUNT issues)"
+echo "${BLUE}[AI Review]${NC} ✓ Naming Agent: Complete (found $NAMING_COUNT issues)"
+echo "${BLUE}[AI Review]${NC} ✓ Code Quality Agent: Complete (found $QUALITY_COUNT issues)"
 
-# Method 2: If that fails, try simple grep for JSON object
-if [ -z "$REVIEW_JSON" ] || [ "$REVIEW_JSON" = "" ]; then
-  REVIEW_JSON=$(echo "$REVIEW_OUTPUT" | grep -o '{.*}' | head -1 || echo '{"summary": "Parse error", "issues": []}')
-fi
+# Run summarizer to aggregate results
+echo ""
+echo "${BLUE}[AI Review]${NC} Aggregating results from all agents..."
+echo "${BLUE}[AI Review]${NC} ⏳ Summarizer Agent: Deduplicating and prioritizing findings..."
 
-# Save review output
-mkdir -p "$AI_DIR"
-echo "$REVIEW_JSON" > "$LAST_REVIEW_FILE"
+FINAL_JSON=$(run_summarizer_agent "$SECURITY_JSON" "$NAMING_JSON" "$QUALITY_JSON")
 
-# Validate JSON structure
-if ! echo "$REVIEW_JSON" | jq -e . >/dev/null 2>&1; then
-  echo "${YELLOW}[AI Review] Warning: Could not parse AI response as JSON.${NC}"
-  echo "Response saved to: $LAST_REVIEW_FILE"
+# Validate final JSON
+if ! echo "$FINAL_JSON" | jq -e . >/dev/null 2>&1; then
+  echo "${YELLOW}[AI Review] Warning: Could not parse summarizer response as JSON.${NC}"
   echo ""
   echo "${GREEN}[AI Review] Allowing commit (parse error).${NC}"
   exit 0
 fi
 
-# Parse JSON for BLOCK issues (support both BLOCK and CRITICAL severity)
-BLOCK_ISSUES=$(echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="BLOCK" or .severity=="CRITICAL")' 2>/dev/null)
-BLOCK_COUNT=$(echo "$REVIEW_JSON" | jq -r '[.issues[] | select(.severity=="BLOCK" or .severity=="CRITICAL")] | length' 2>/dev/null)
+echo "${BLUE}[AI Review]${NC} ✓ Summarizer Agent: Complete"
 
+# Display per-agent results
+echo ""
+echo "${BLUE}============================================${NC}"
+echo "${BLUE}Review Results by Agent${NC}"
+echo "${BLUE}============================================${NC}"
+
+display_agent_results "$SECURITY_JSON" "security" "Security"
+display_agent_results "$NAMING_JSON" "naming" "Naming"
+display_agent_results "$QUALITY_JSON" "quality" "Code Quality"
+
+# Display final summary
+echo ""
+echo "${BLUE}============================================${NC}"
+echo "${BLUE}Final Summary${NC}"
+echo "${BLUE}============================================${NC}"
+echo ""
+FINAL_SUMMARY=$(echo "$FINAL_JSON" | jq -r '.summary' 2>/dev/null || echo "No summary")
+echo "${BLUE}[AI Review]${NC} $FINAL_SUMMARY"
+
+# Parse JSON for BLOCK issues
+BLOCK_COUNT=$(echo "$FINAL_JSON" | jq -r '[.issues[] | select(.severity=="BLOCK" or .severity=="CRITICAL")] | length' 2>/dev/null || echo "0")
+
+echo ""
+
+# Make commit decision based on BLOCK issues
 if [ "$BLOCK_COUNT" -gt 0 ]; then
   echo ""
-  echo "${RED}╔═══════════════════════════════════════════════════════════╗${NC}"
-  echo "${RED}║  AI REVIEW: COMMIT BLOCKED                                ║${NC}"
-  echo "${RED}╚═══════════════════════════════════════════════════════════╝${NC}"
+  echo "${RED}ΓòöΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòù${NC}"
+  echo "${RED}Γòæ  AI REVIEW: COMMIT BLOCKED                                Γòæ${NC}"
+  echo "${RED}ΓòÜΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓò¥${NC}"
   echo ""
   echo "Found $BLOCK_COUNT critical issue(s):"
   echo ""
-  # Display issues - description includes file:line info from Copilot
-  echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="BLOCK" or .severity=="CRITICAL") | 
-    "  ❌ [\(.severity)] \(.type // "Issue")\n     \(.description // .message // "No details")\n"' 2>/dev/null
+  # Display BLOCK issues from final summary
+  echo "$FINAL_JSON" | jq -r '.issues[] | select(.severity=="BLOCK" or .severity=="CRITICAL") | 
+    "  Γ¥î [\(.severity)] [\(.agent)] \(.file):\(.line)\n     \(.message)\n"' 2>/dev/null
   echo "${YELLOW}Fix these issues or use 'git commit --no-verify' to bypass.${NC}"
   echo "Review details saved to: $LAST_REVIEW_FILE"
   echo ""
@@ -359,29 +514,25 @@ if [ "$BLOCK_COUNT" -gt 0 ]; then
 fi
 
 # Show warnings and info (support various severity levels)
-WARN_COUNT=$(echo "$REVIEW_JSON" | jq -r '[.issues[] | select(.severity=="WARN" or .severity=="WARNING" or .severity=="ERROR" or .severity=="HIGH")] | length' 2>/dev/null)
-INFO_COUNT=$(echo "$REVIEW_JSON" | jq -r '[.issues[] | select(.severity=="INFO" or .severity=="LOW")] | length' 2>/dev/null)
+WARN_COUNT=$(echo "$FINAL_JSON" | jq -r '[.issues[] | select(.severity=="WARN" or .severity=="WARNING")] | length' 2>/dev/null || echo "0")
+INFO_COUNT=$(echo "$FINAL_JSON" | jq -r '[.issues[] | select(.severity=="INFO")] | length' 2>/dev/null || echo "0")
 
 if [ "$WARN_COUNT" -gt 0 ] || [ "$INFO_COUNT" -gt 0 ]; then
   echo ""
   echo "${YELLOW}[AI Review] Found $WARN_COUNT warning(s) and $INFO_COUNT info message(s):${NC}"
   echo ""
   if [ "$WARN_COUNT" -gt 0 ]; then
-    echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="WARN" or .severity=="WARNING" or .severity=="ERROR" or .severity=="HIGH") | 
-      "  ⚠️  [\(.severity)] \(.type // "Warning")\n     \(.description // .message // "No details")\n"' 2>/dev/null
+    echo "$FINAL_JSON" | jq -r '.issues[] | select(.severity=="WARN" or .severity=="WARNING") | 
+      "  ΓÜá∩╕Å  [\(.severity)] [\(.agent)] \(.file):\(.line)\n     \(.message)\n"' 2>/dev/null
   fi
   if [ "$INFO_COUNT" -gt 0 ]; then
-    echo "$REVIEW_JSON" | jq -r '.issues[] | select(.severity=="INFO" or .severity=="LOW") | 
-      "  ℹ️  [\(.severity)] \(.type // "Info")\n     \(.description // .message // "No details")\n"' 2>/dev/null
+    echo "$FINAL_JSON" | jq -r '.issues[] | select(.severity=="INFO") | 
+      "  Γä╣∩╕Å  [\(.severity)] [\(.agent)] \(.file):\(.line)\n     \(.message)\n"' 2>/dev/null
   fi
 fi
 
-# Show summary
-SUMMARY=$(echo "$REVIEW_JSON" | jq -r '.summary')
-if [ -n "$SUMMARY" ] && [ "$SUMMARY" != "null" ]; then
-  echo "${GREEN}[AI Review] ${SUMMARY}${NC}"
-fi
-
-echo "${GREEN}[AI Review] ✓ Review complete. Allowing commit.${NC}"
+echo ""
+echo "${GREEN}[AI Review] Γ£ô Review complete. Allowing commit.${NC}"
+echo "Review details saved to: $LAST_REVIEW_FILE"
 echo ""
 exit 0

@@ -1,0 +1,56 @@
+# Code Quality Agent Checklist
+# Version: 1.0.0
+# Last Updated: 2026-01-29
+# Focus: Code Quality, Correctness, and Best Practices
+
+metadata:
+  version: "1.0.0"
+  language: "java"
+  agent: "quality"
+  focus: "Code correctness, thread safety, exception handling, and best practices"
+
+rules:
+  # =============================================================================
+  # BLOCK Severity - Critical Correctness Issues (Prevents Commit)
+  # =============================================================================
+
+  - id: npe-risk
+    category: insecure-design
+    owasp: "A04:2021"
+    description: "Identify code that may cause NullPointerException."
+    severity: BLOCK
+
+  - id: thread-safety
+    category: insecure-design
+    owasp: "A04:2021"
+    description: "Check for thread safety issues in shared mutable state."
+    severity: BLOCK
+
+  # =============================================================================
+  # WARN Severity - Code Quality Issues (Allows Commit with Warnings)
+  # =============================================================================
+
+  - id: exception-handling
+    category: code-quality
+    description: "Ensure exceptions are handled properly and not silently ignored."
+    severity: WARN
+
+  - id: performance-collections
+    category: code-quality
+    description: "Detect inefficient collection usage or performance anti-patterns."
+    severity: WARN
+
+  - id: missing-tests
+    category: code-quality
+    description: "Flag new logic without corresponding tests."
+    severity: WARN
+
+  - id: resource-leak
+    category: code-quality
+    description: "Detect unclosed streams, connections, or resources not using try-with-resources."
+    severity: WARN
+
+  - id: input-validation
+    category: code-quality
+    description: "Detect missing input validation for method parameters from external sources."
+    severity: WARN
