@@ -344,7 +344,17 @@ if [ ! -f "$PROMPT_FILE" ]; then
 fi
 
 # Extract staged diff for Java files only
-if ! git diff --cached -- $STAGED_JAVA_FILES > "$DIFF_FILE"; then
+# Use printf to properly handle filenames with spaces
+if [ -n "$STAGED_JAVA_FILES" ]; then
+  # Convert newline-separated list to null-separated for proper handling
+  printf "%s\n" "$STAGED_JAVA_FILES" | while IFS= read -r file; do
+    git diff --cached -- "$file"
+  done > "$DIFF_FILE"
+else
+  touch "$DIFF_FILE"
+fi
+
+if [ ! -f "$DIFF_FILE" ]; then
   echo "${RED}[AI Review] Failed to extract staged diff. Aborting commit.${NC}"
   exit 1
 fi
