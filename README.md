@@ -2,13 +2,19 @@
 
 # 🛡️ AI Code Review CLI
 
-### Catch Security Vulnerabilities Before They Ship
+### Catch Security, Bugs & Quality Issues Before They Ship
 
-**A portable, CLI-based AI code review system that blocks commits with critical issues—powered by GitHub Copilot.**
+**A portable, CLI-based AI code review system that performs comprehensive reviews at commit time—powered by GitHub Copilot.**
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](https://github.com)
 [![GitHub Copilot](https://img.shields.io/badge/Powered%20by-GitHub%20Copilot-8A2BE2)](https://github.com/features/copilot)
+
+<div align="center">
+
+![AI Code Review CLI](./docs/linked_image.png)
+
+</div>
 
 <br />
 
@@ -22,13 +28,13 @@
 
 ## 💡 The Problem
 
-You're about to commit code with a hardcoded password. Or a SQL injection vulnerability. Or a null pointer exception waiting to happen.
+You're about to commit code with a hardcoded password. Or a SQL injection vulnerability. Or an empty catch block. Or naming convention violations.
 
 **Traditional code reviews catch these issues—days later.** By then, they're already in your codebase, possibly in production.
 
 ## ✅ The Solution
 
-This tool intercepts your commits **before they happen**, analyzes your staged changes with AI, and **blocks commits that contain critical security or correctness issues**.
+This tool intercepts your commits **before they happen**, analyzes your staged changes with AI, and **blocks commits that contain critical security, correctness, or quality issues**.
 
 ```
 $ git commit -m "Add user authentication"
@@ -54,14 +60,44 @@ Fix these issues or use 'git commit --no-verify' to bypass.
 
 ---
 
+## 🔍 What Gets Reviewed
+
+This isn't just a security tool—it's a comprehensive AI code reviewer that checks multiple aspects of your code:
+
+<div align="center">
+
+![AI Code Review](./assets/ai_code_review_comprehensive.png)
+
+</div>
+
+**Review Categories:**
+
+| Category | Severity | Examples |
+|----------|----------|----------|
+| 🔒 **Security** | BLOCK | Hardcoded secrets, SQL injection, unsafe deserialization |
+| 🐛 **Correctness** | BLOCK | Null pointer risks, thread safety issues |
+| ⚡ **Performance** | WARN | Inefficient collections, O(n) when O(1) available |
+| 📝 **Code Quality** | WARN | Empty catch blocks, poor exception handling |
+| 🎯 **Best Practices** | INFO | Naming conventions, Java code standards |
+
+**Severity Levels:**
+- **BLOCK**: Commit rejected (security & critical bugs)
+- **WARN**: Commit allowed with warnings (quality issues)
+- **INFO**: Commit allowed with suggestions (style & conventions)
+
+> 📖 Want to share this? See our [LinkedIn post template](./linkedin_post.md) with talking points about the project.
+
+---
+
 ## 🎯 Features
 
 | Feature | Description |
 |---------|-------------|
-| 🔒 **Blocks Critical Issues** | Prevents commits with security vulnerabilities, hardcoded secrets, or correctness bugs |
-| 🎯 **Java-Focused Checklist** | YAML-driven rules covering OWASP security guidelines |
+| 🔒 **Comprehensive Reviews** | Checks security, correctness, performance, quality, and best practices |
+| 🎯 **Java-Focused Checklist** | YAML-driven rules covering OWASP security + code quality standards |
 | ⚡ **Reviews Only Changes** | Analyzes staged diffs, not entire files—fast and focused |
 | 🤖 **AI-Powered Analysis** | Leverages GitHub Copilot for intelligent code understanding |
+| 🚫 **Smart Blocking** | Only blocks BLOCK-severity issues (security/bugs), allows WARN/INFO |
 | 📋 **Strict JSON Output** | Machine-readable results for CI/CD integration |
 | 🖥️ **Cross-Platform** | Works on Windows (Git Bash/WSL), macOS, and Linux |
 | 🔧 **IDE-Agnostic** | No IDE dependencies—works in any terminal |
@@ -143,7 +179,7 @@ git commit -m "Add new feature"
 
 ## 🔐 Security & Privacy
 
-> **⚠️ Important:** This tool sends your code to external AI services. Understand the data implications before using.
+> **⚠️ Critical:** This tool sends your code to AI services. For proprietary/corporate code, you **MUST** use GitHub Copilot Business/Enterprise, Azure OpenAI, or local LLMs (Ollama). **Do NOT use free/consumer AI tiers** for confidential code.
 
 ```mermaid
 flowchart LR
@@ -164,23 +200,37 @@ flowchart LR
 | **Contractual Protection** | ✅ Data Processing Agreement (DPA), GDPR compliance | ⚠️ Standard consumer terms only |
 | **IP Indemnification** | ✅ Often includes IP infringement protection | ❌ Typically not included |
 
-#### ✅ Safe for Corporate Use: Enterprise Plans
+#### ✅ Required for Proprietary Code: Secure AI Options
 
-**GitHub Copilot Business/Enterprise** and similar enterprise AI offerings:
-- Your prompts (code) are **discarded immediately** after generating a response
-- Your code is **never used to train** the AI model
-- GitHub acts as a **data processor** with contractual obligations
-- Suitable for proprietary codebases (verify with your legal/security team)
+**For corporate/proprietary codebases, use ONLY these options:**
 
-#### ⚠️ Caution: Free/Consumer AI Tiers
+1. **GitHub Copilot Business/Enterprise**
+   - ✅ Code is **discarded immediately** after generating response
+   - ✅ **Never used to train** AI models
+   - ✅ Contractual data processing agreement (DPA)
+   - ✅ GDPR compliant
 
-**Free tiers of AI services** (e.g., free ChatGPT, free Copilot trials, consumer plans):
-- Your code **may be retained** and used to improve the model
-- **No contractual data protection** guarantees
-- Not recommended for proprietary, confidential, or sensitive code
-- Check each provider's terms—policies vary and change frequently
+2. **Azure OpenAI Service**
+   - ✅ Enterprise SLA (99.9% uptime)
+   - ✅ Data residency options
+   - ✅ Your data never leaves your Azure tenant
+   - ✅ Full RBAC and compliance controls
 
-> **Bottom line:** If you're working on proprietary code, use an enterprise-tier AI service with clear data protection terms, or consider local models (Ollama, CodeLlama) that never send data externally.
+3. **Local LLMs (Ollama + CodeLlama)**
+   - ✅ Data **never leaves your machine**
+   - ✅ No internet connection required
+   - ✅ Complete privacy
+   - ✅ No subscription costs
+
+#### ❌ NEVER Use for Proprietary Code: Consumer AI Tiers
+
+**Do NOT use free/individual AI plans for corporate code:**
+
+- ❌ **GitHub Copilot Individual** - May retain prompts, different terms than Business/Enterprise
+- ❌ **Free ChatGPT, Claude, etc.** - Code may be used for model training
+- ❌ **Free API trials** - Limited data protection guarantees
+
+> **Bottom line:** If you're working on proprietary code, you **MUST** use GitHub Copilot Business/Enterprise, Azure OpenAI, or local models (Ollama). Consumer/free tiers are **NOT suitable** for confidential code.
 
 ### What NOT to Send (Any AI Service)
 
@@ -318,6 +368,31 @@ export AI_REVIEW_ENABLED=false
 # or
 rm .git/hooks/pre-commit
 ```
+
+### Uninstall / Remove the Hook
+
+**Remove hook for this repository**
+
+```sh
+# macOS / Linux / Git Bash
+rm .git/hooks/pre-commit
+
+# PowerShell (Windows)
+Remove-Item .git\hooks\pre-commit
+```
+
+**If you had an existing `pre-commit` hook before installing**
+
+- Restore it from your own backup (for example, rename `pre-commit.bak` back to `pre-commit`).
+
+**If your Git is configured to use a custom hooks directory**
+
+```sh
+git config --get core.hooksPath
+git config --global --get core.hooksPath
+```
+
+If either command prints a path, remove the `pre-commit` file from that hooks folder instead of `.git/hooks/`.
 
 ### Customize Checklist
 

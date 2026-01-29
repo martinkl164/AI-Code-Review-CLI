@@ -298,7 +298,7 @@ if [ $RETCODE -ne 0 ] || [ -z "$REVIEW_OUTPUT" ]; then
   echo "  3. Network connectivity issues"
   echo "  4. CLI version outdated (run: copilot update)"
   echo ""
-  echo "Alternative AI Review APIs (see API_INFORMATION.md):"
+  echo "Alternative AI Review APIs:"
   echo "  • OpenAI GPT-4: https://platform.openai.com/docs"
   echo "  • Azure OpenAI: https://azure.microsoft.com/products/ai-services/openai-service"
   echo "  • Claude (Anthropic): https://www.anthropic.com/api"
