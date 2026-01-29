@@ -18,7 +18,7 @@
 
 <br />
 
-[Quick Start](#-quick-start) • [Features](#-features) • [Workflows](#-workflows) • [Customization](#-configuration) • [Troubleshooting](#-troubleshooting)
+[Quick Start](#-quick-start) • [Features](#-features) • [Workflows](#-workflows) • [Configuration](#-configuration) • [Troubleshooting](#-troubleshooting)
 
 <br />
 
@@ -64,11 +64,6 @@ Fix these issues or use 'git commit --no-verify' to bypass.
 
 This isn't just a security tool—it's a comprehensive AI code reviewer that checks multiple aspects of your code:
 
-<div align="center">
-
-![AI Code Review](./assets/ai_code_review_comprehensive.png)
-
-</div>
 
 **Review Categories:**
 
@@ -84,8 +79,6 @@ This isn't just a security tool—it's a comprehensive AI code reviewer that che
 - **BLOCK**: Commit rejected (security & critical bugs)
 - **WARN**: Commit allowed with warnings (quality issues)
 - **INFO**: Commit allowed with suggestions (style & conventions)
-
-> 📖 Want to share this? See our [LinkedIn post template](./linkedin_post.md) with talking points about the project.
 
 ---
 
@@ -421,17 +414,21 @@ rules:
 .
 ├── pre-commit.sh                          # Pre-commit hook template
 ├── install.sh                             # Automated installation
+├── LICENSE                                # MIT License
 ├── .ai/
 │   ├── java_code_review_checklist.yaml   # Review rules (YAML)
 │   ├── java_review_prompt.txt            # AI prompt template
-│   └── last_review.json                  # Last review results
+│   └── last_review.json                  # Last review results (generated)
 ├── docs/
 │   ├── ARCHITECTURE.md                   # System design
 │   ├── SECURITY.md                       # Security guide
-│   └── CUSTOMIZATION.md                  # Extension guide
+│   ├── CUSTOMIZATION.md                  # Extension guide
+│   ├── linkedin_post.md                  # LinkedIn post template
+│   └── linked_image.png                  # Project image
 ├── examples/
 │   ├── test.java                         # Example with issues
-│   └── example_review_output.json        # Sample output
+│   ├── example_review_output.json        # Sample output
+│   └── README.md                         # Examples documentation
 └── README.md
 ```
 
