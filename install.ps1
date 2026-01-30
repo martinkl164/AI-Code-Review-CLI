@@ -92,21 +92,13 @@ if (-not (Test-Path ".ai")) {
     New-Item -ItemType Directory -Path ".ai" -Force | Out-Null
 }
 
-# Check for checklist file
-if (-not (Test-Path ".ai/java_code_review_checklist.yaml")) {
-    Write-Fail ".ai/java_code_review_checklist.yaml not found"
-    Write-Host "This file is required. Please ensure it exists."
+# Check for agent configuration
+if (-not (Test-Path ".ai/agents")) {
+    Write-Fail ".ai/agents directory not found"
+    Write-Host "This directory is required for multi-agent system."
     exit 1
 }
-Write-Success "Checklist file found"
-
-# Check for prompt file
-if (-not (Test-Path ".ai/java_review_prompt.txt")) {
-    Write-Fail ".ai/java_review_prompt.txt not found"
-    Write-Host "This file is required. Please ensure it exists."
-    exit 1
-}
-Write-Success "Prompt file found"
+Write-Success "Agent configuration found"
 
 # Check for agent directories
 $agents = @("security", "naming", "quality", "summarizer")

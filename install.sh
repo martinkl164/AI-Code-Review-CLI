@@ -60,22 +60,12 @@ if [ ! -d ".ai" ]; then
   mkdir -p .ai
 fi
 
-# Check for checklist file
-if [ ! -f ".ai/java_code_review_checklist.yaml" ]; then
-  echo "${RED}✗ .ai/java_code_review_checklist.yaml not found${NC}"
-  echo "This file is required. Please ensure it exists."
+# Check for agent configuration files
+echo "${GREEN}✓ Checking agent configuration...${NC}"
+if [ ! -d ".ai/agents" ]; then
+  echo "${RED}✗ .ai/agents directory not found${NC}"
+  echo "This directory is required for multi-agent system."
   exit 1
-else
-  echo "${GREEN}✓ Checklist file found${NC}"
-fi
-
-# Check for prompt file
-if [ ! -f ".ai/java_review_prompt.txt" ]; then
-  echo "${RED}✗ .ai/java_review_prompt.txt not found${NC}"
-  echo "This file is required. Please ensure it exists."
-  exit 1
-else
-  echo "${GREEN}✓ Prompt file found${NC}"
 fi
 
 echo ""

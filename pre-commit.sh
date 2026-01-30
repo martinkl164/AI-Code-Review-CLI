@@ -10,8 +10,6 @@ set -e
 
 # Configuration
 AI_DIR=".ai"
-CHECKLIST_FILE="$AI_DIR/java_code_review_checklist.yaml"
-PROMPT_FILE="$AI_DIR/java_review_prompt.txt"
 LAST_REVIEW_FILE="$AI_DIR/last_review.json"
 MAX_DIFF_SIZE=20000 # bytes
 
@@ -222,17 +220,6 @@ fi
 echo "${GREEN}[AI Review] ✓${NC} GitHub Copilot CLI detected and ready"
 
 # Note: jq is no longer required since we switched to markdown output parsing
-
-# Check if required files exist
-if [ ! -f "$CHECKLIST_FILE" ]; then
-  echo "${RED}[AI Review] Error: Checklist file not found: $CHECKLIST_FILE${NC}"
-  exit 1
-fi
-
-if [ ! -f "$PROMPT_FILE" ]; then
-  echo "${RED}[AI Review] Error: Prompt file not found: $PROMPT_FILE${NC}"
-  exit 1
-fi
 
 # Extract staged diff for Java files only
 # Use printf to properly handle filenames with spaces

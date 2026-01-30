@@ -67,8 +67,6 @@ jobs:
           
           # Required files
           required_files=(
-            ".ai/java_code_review_checklist.yaml"
-            ".ai/java_review_prompt.txt"
             ".ai/agents/security/checklist.yaml"
             ".ai/agents/security/prompt.txt"
             ".ai/agents/naming/checklist.yaml"

@@ -19,8 +19,6 @@ $ErrorActionPreference = 'Stop'
 # ============================================================================
 
 $AI_DIR = ".ai"
-$CHECKLIST_FILE = "$AI_DIR/java_code_review_checklist.yaml"
-$PROMPT_FILE = "$AI_DIR/java_review_prompt.txt"
 $LAST_REVIEW_FILE = "$AI_DIR/last_review.json"
 $MAX_DIFF_SIZE = 20000  # bytes
 
@@ -256,17 +254,6 @@ if (-not $CopilotPath) {
     exit 1
 }
 Write-Success "GitHub Copilot CLI detected and ready"
-
-# Check if required files exist
-if (-not (Test-Path $CHECKLIST_FILE)) {
-    Write-Error "Checklist file not found: $CHECKLIST_FILE"
-    exit 1
-}
-
-if (-not (Test-Path $PROMPT_FILE)) {
-    Write-Error "Prompt file not found: $PROMPT_FILE"
-    exit 1
-}
 
 # Extract staged diff for Java files
 $DiffFile = Join-Path $TEMP_DIR "java_review_diff_$PID.patch"
