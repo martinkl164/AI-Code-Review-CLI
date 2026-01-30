@@ -190,13 +190,13 @@ if [ -z "$STAGED_JAVA_FILES" ]; then
   exit 0
 fi
 
-echo "${BLUE}[AI Review]${NC} Found Java files to review:"
+echo "${BLUE}[AI Review] ℹ${NC} Found Java files to review:"
 echo "$STAGED_JAVA_FILES" | sed 's/^/  - /'
 
 # Dependency checks (only if we have Java files to review)
 check_dependency() {
   if ! command -v "$1" >/dev/null 2>&1; then
-    echo "${RED}[AI Review] Error: Required command '$1' not found.${NC}"
+    echo "${RED}[AI Review] ✗ Error: Required command '$1' not found.${NC}"
     echo ""
     case "$1" in
       copilot)
@@ -213,13 +213,13 @@ check_dependency() {
   return 0
 }
 
-echo "${BLUE}[AI Review]${NC} Checking dependencies..."
+echo "${BLUE}[AI Review] ⏳${NC} Checking dependencies (GitHub Copilot CLI required for AI analysis)..."
 
 # Check for copilot
 if ! check_dependency "copilot"; then
   exit 1
 fi
-echo "${BLUE}[AI Review]${NC} Found copilot"
+echo "${GREEN}[AI Review] ✓${NC} GitHub Copilot CLI detected and ready"
 
 # Note: jq is no longer required since we switched to markdown output parsing
 
@@ -298,7 +298,10 @@ DIFF_CONTENT=$(cat "$DIFF_FILE")
 # =============================================================================
 
 echo ""
-echo "${BLUE}[AI Review]${NC} Running analysis (model: $AI_MODEL)..."
+echo "${BLUE}[AI Review] ⏳${NC} Running analysis with 3 specialized agents in parallel (model: $AI_MODEL)..."
+echo "${BLUE}  ⏳ Security Agent - Checking OWASP vulnerabilities, secrets, injection attacks${NC}"
+echo "${BLUE}  ⏳ Naming Agent - Validating Java naming conventions${NC}"
+echo "${BLUE}  ⏳ Quality Agent - Analyzing code correctness, performance, best practices${NC}"
 
 # Run agents in parallel
 run_agent "security" "$DIFF_CONTENT" &
@@ -378,10 +381,10 @@ if [ "$QUALITY_COUNT" = "0" ]; then
   QUALITY_COUNT=$(echo "$QUALITY_REPORT" | grep -c '"severity"' 2>/dev/null || echo "0")
 fi
 
-echo "${BLUE}[AI Review]${NC} -> Security: $SECURITY_COUNT | Naming: $NAMING_COUNT | Quality: $QUALITY_COUNT"
+echo "${GREEN}[AI Review] ✓${NC} Security: $SECURITY_COUNT issues | Naming: $NAMING_COUNT issues | Quality: $QUALITY_COUNT issues"
 
 # Run summarizer to aggregate results
-echo "${BLUE}[AI Review]${NC} Aggregating results..."
+echo "${BLUE}[AI Review] ⏳${NC} Aggregating results from all agents (deduplicating and prioritizing)..."
 FINAL_REPORT=$(run_summarizer_agent "$SECURITY_REPORT" "$NAMING_REPORT" "$QUALITY_REPORT")
 
 # Display per-agent results
@@ -418,45 +421,73 @@ echo ""
 # Make commit decision based on BLOCK issues
 if [ "$BLOCK_COUNT" -gt 0 ]; then
   echo ""
-  echo "${RED}???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????${NC}"
-  echo "${RED}???  AI REVIEW: COMMIT BLOCKED                                ???${NC}"
-  echo "${RED}??????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????${NC}"
+  echo "${RED}========================================================${NC}"
+  echo "${RED}  COMMIT BLOCKED - $BLOCK_COUNT Critical Issue(s) Found${NC}"
+  echo "${RED}========================================================${NC}"
   echo ""
-  echo "Found $BLOCK_COUNT critical issue(s):"
+  echo "${RED}❌ BLOCKING ISSUES ($BLOCK_COUNT):${NC}"
+  # Display BLOCK issues from all agent reports
+  echo "$SECURITY_REPORT" | grep -B 1 -A 5 '^\### \[BLOCK\]\|^\### \[CRITICAL\]' 2>/dev/null
+  echo "$NAMING_REPORT" | grep -B 1 -A 5 '^\### \[BLOCK\]\|^\### \[CRITICAL\]' 2>/dev/null
+  echo "$QUALITY_REPORT" | grep -B 1 -A 5 '^\### \[BLOCK\]\|^\### \[CRITICAL\]' 2>/dev/null
   echo ""
-  # Display BLOCK issues from final summary
-  echo "$FINAL_REPORT" | grep -B 1 -A 5 '^\### \[BLOCK\]\|^\### \[CRITICAL\]'
+  
+  # Count and display warnings
+  WARN_COUNT=$(echo "$SECURITY_REPORT$NAMING_REPORT$QUALITY_REPORT" | grep -c '^\### \[WARN\]\|^\### \[WARNING\]' 2>/dev/null || echo "0")
+  if [ "$WARN_COUNT" -gt 0 ]; then
+    echo "${YELLOW}⚠ WARNINGS ($WARN_COUNT):${NC}"
+    echo "$SECURITY_REPORT" | grep -B 1 -A 5 '^\### \[WARN\]\|^\### \[WARNING\]' 2>/dev/null
+    echo "$NAMING_REPORT" | grep -B 1 -A 5 '^\### \[WARN\]\|^\### \[WARNING\]' 2>/dev/null
+    echo "$QUALITY_REPORT" | grep -B 1 -A 5 '^\### \[WARN\]\|^\### \[WARNING\]' 2>/dev/null
+    echo ""
+  fi
+  
+  # Count and display info
+  INFO_COUNT=$(echo "$SECURITY_REPORT$NAMING_REPORT$QUALITY_REPORT" | grep -c '^\### \[INFO\]' 2>/dev/null || echo "0")
+  if [ "$INFO_COUNT" -gt 0 ]; then
+    echo "${CYAN}ℹ INFO SUGGESTIONS ($INFO_COUNT):${NC}"
+    echo "$SECURITY_REPORT" | grep -B 1 -A 5 '^\### \[INFO\]' 2>/dev/null
+    echo "$NAMING_REPORT" | grep -B 1 -A 5 '^\### \[INFO\]' 2>/dev/null
+    echo "$QUALITY_REPORT" | grep -B 1 -A 5 '^\### \[INFO\]' 2>/dev/null
+    echo ""
+  fi
+  
   echo "${YELLOW}Fix these issues or use 'git commit --no-verify' to bypass.${NC}"
   echo "Review details saved to: $LAST_REVIEW_FILE"
   echo ""
   exit 1
 fi
 
-# Show warnings and info (support various severity levels)
-WARN_COUNT=$(echo "$FINAL_REPORT" | grep -c '^\### \[WARN\]\|^\### \[WARNING\]' 2>/dev/null)
-if [ "$WARN_COUNT" = "0" ]; then
-  WARN_COUNT=$(echo "$FINAL_REPORT" | grep -ci '"severity".*"warn"\|"severity".*"medium"\|"severity".*"high"' 2>/dev/null || echo "0")
-fi
+# Count warnings and info from all agent reports
+WARN_COUNT=$(echo "$SECURITY_REPORT$NAMING_REPORT$QUALITY_REPORT" | grep -c '^\### \[WARN\]\|^\### \[WARNING\]' 2>/dev/null || echo "0")
+INFO_COUNT=$(echo "$SECURITY_REPORT$NAMING_REPORT$QUALITY_REPORT" | grep -c '^\### \[INFO\]' 2>/dev/null || echo "0")
+TOTAL_COUNT=$((WARN_COUNT + INFO_COUNT))
 
-INFO_COUNT=$(echo "$FINAL_REPORT" | grep -c '^\### \[INFO\]' 2>/dev/null)
-if [ "$INFO_COUNT" = "0" ]; then
-  INFO_COUNT=$(echo "$FINAL_REPORT" | grep -ci '"severity".*"info"\|"severity".*"low"' 2>/dev/null || echo "0")
-fi
-
-if [ "$WARN_COUNT" -gt 0 ] || [ "$INFO_COUNT" -gt 0 ]; then
-  echo ""
-  echo "${YELLOW}[AI Review] Found $WARN_COUNT warning(s) and $INFO_COUNT info message(s):${NC}"
-  echo ""
+# No blocking issues - show summary
+echo ""
+if [ "$TOTAL_COUNT" -eq 0 ]; then
+  echo "${GREEN}[AI Review] ✓ No issues found. Commit allowed.${NC}"
+else
+  echo "${GREEN}[AI Review] ✓ Analysis complete. Commit allowed with $WARN_COUNT warning(s) and $INFO_COUNT suggestion(s).${NC}"
+  
   if [ "$WARN_COUNT" -gt 0 ]; then
-    echo "$FINAL_REPORT" | grep -B 1 -A 5 '^\### \[WARN\]\|^\### \[WARNING\]'
+    echo ""
+    echo "${YELLOW}⚠ WARNINGS ($WARN_COUNT):${NC}"
+    echo "$SECURITY_REPORT" | grep -B 1 -A 5 '^\### \[WARN\]\|^\### \[WARNING\]' 2>/dev/null
+    echo "$NAMING_REPORT" | grep -B 1 -A 5 '^\### \[WARN\]\|^\### \[WARNING\]' 2>/dev/null
+    echo "$QUALITY_REPORT" | grep -B 1 -A 5 '^\### \[WARN\]\|^\### \[WARNING\]' 2>/dev/null
   fi
+  
   if [ "$INFO_COUNT" -gt 0 ]; then
-    echo "$FINAL_REPORT" | grep -B 1 -A 5 '^\### \[INFO\]'
+    echo ""
+    echo "${CYAN}ℹ INFO SUGGESTIONS ($INFO_COUNT):${NC}"
+    echo "$SECURITY_REPORT" | grep -B 1 -A 5 '^\### \[INFO\]' 2>/dev/null
+    echo "$NAMING_REPORT" | grep -B 1 -A 5 '^\### \[INFO\]' 2>/dev/null
+    echo "$QUALITY_REPORT" | grep -B 1 -A 5 '^\### \[INFO\]' 2>/dev/null
   fi
 fi
 
 echo ""
-echo "${GREEN}[AI Review] ??? Review complete. Allowing commit.${NC}"
 echo "Review details saved to: $LAST_REVIEW_FILE"
 echo ""
 exit 0

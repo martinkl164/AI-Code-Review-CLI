@@ -88,10 +88,11 @@ function Write-ColorOutput {
     Write-Host $Message -ForegroundColor $Color
 }
 
-function Write-Info { param([string]$Message) Write-ColorOutput "[AI Review] $Message" 'Cyan' }
-function Write-Success { param([string]$Message) Write-ColorOutput "[AI Review] $Message" 'Green' }
-function Write-Warning { param([string]$Message) Write-ColorOutput "[AI Review] $Message" 'Yellow' }
-function Write-Error { param([string]$Message) Write-ColorOutput "[AI Review] $Message" 'Red' }
+function Write-Info { param([string]$Message) Write-ColorOutput "[AI Review] $([char]0x2139) $Message" 'Cyan' }
+function Write-InProgress { param([string]$Message) Write-ColorOutput "[AI Review] $([char]0x231B) $Message" 'Cyan' }
+function Write-Success { param([string]$Message) Write-ColorOutput "[AI Review] $([char]0x2713) $Message" 'Green' }
+function Write-Warning { param([string]$Message) Write-ColorOutput "[AI Review] $([char]0x26A0) $Message" 'Yellow' }
+function Write-Error { param([string]$Message) Write-ColorOutput "[AI Review] $([char]0x2717) $Message" 'Red' }
 
 # ============================================================================
 # MULTI-AGENT HELPER FUNCTIONS
@@ -239,7 +240,7 @@ Write-Info "Found Java files to review:"
 $StagedJavaFiles | ForEach-Object { Write-Host "  - $_" }
 
 # Dependency checks
-Write-Info "Checking dependencies..."
+Write-InProgress "Checking dependencies (GitHub Copilot CLI required for AI analysis)..."
 
 # Check for copilot CLI
 $CopilotPath = Get-Command copilot -ErrorAction SilentlyContinue
@@ -254,7 +255,7 @@ if (-not $CopilotPath) {
     Write-Host "To bypass this check temporarily, use: git commit --no-verify"
     exit 1
 }
-Write-Info "Found copilot"
+Write-Success "GitHub Copilot CLI detected and ready"
 
 # Check if required files exist
 if (-not (Test-Path $CHECKLIST_FILE)) {
@@ -318,7 +319,10 @@ if ($env:SKIP_SENSITIVE_CHECK -ne 'true') {
 # ============================================================================
 
 Write-Host ""
-Write-ColorOutput "[AI Review] Running analysis (model: $AI_MODEL)..." 'Cyan'
+Write-InProgress "Running analysis with 3 specialized agents in parallel (model: $AI_MODEL)..."
+Write-Host "  $([char]0x231B) Security Agent - Checking OWASP vulnerabilities, secrets, injection attacks" -ForegroundColor Cyan
+Write-Host "  $([char]0x231B) Naming Agent - Validating Java naming conventions" -ForegroundColor Cyan
+Write-Host "  $([char]0x231B) Quality Agent - Analyzing code correctness, performance, best practices" -ForegroundColor Cyan
 
 # Save diff to temp file for parallel jobs
 $DiffTempFile = Join-Path $TEMP_DIR "diff_content_$PID.txt"
@@ -517,10 +521,10 @@ $SecurityCount = ([regex]::Matches($SecurityReport, '"severity"')).Count
 $NamingCount = ([regex]::Matches($NamingReport, '"severity"')).Count
 $QualityCount = ([regex]::Matches($QualityReport, '"severity"')).Count
 
-Write-Info "-> Security: $SecurityCount | Naming: $NamingCount | Quality: $QualityCount"
+Write-Success "Security: $SecurityCount issues | Naming: $NamingCount issues | Quality: $QualityCount issues"
 
 # Run summarizer
-Write-Info "Aggregating results..."
+Write-InProgress "Aggregating results from all agents (deduplicating and prioritizing)..."
 $FinalReport = Invoke-SummarizerAgent -SecurityJson $SecurityReport -NamingJson $NamingReport -QualityJson $QualityReport
 
 # Collect all issues from all agents
@@ -547,6 +551,7 @@ if ($BlockCount -gt 0) {
     Write-ColorOutput "========================================================" 'Red'
     Write-Host ""
     
+    Write-Host "$([char]0x274C) BLOCKING ISSUES ($BlockCount):" -ForegroundColor Red
     $BlockIssues | ForEach-Object {
         Write-Host "  [BLOCK] $($_.file):$($_.line)" -ForegroundColor Red
         Write-Host "    $($_.message)"
@@ -554,10 +559,20 @@ if ($BlockCount -gt 0) {
     
     if ($WarnCount -gt 0) {
         Write-Host ""
-        Write-Host "  + $WarnCount warning(s)" -ForegroundColor Yellow
+        Write-Host "$([char]0x26A0) WARNINGS ($WarnCount):" -ForegroundColor Yellow
+        $WarnIssues | ForEach-Object {
+            Write-Host "  [WARN] $($_.file):$($_.line)" -ForegroundColor Yellow
+            Write-Host "    $($_.message)"
+        }
     }
+    
     if ($InfoCount -gt 0) {
-        Write-Host "  + $InfoCount info suggestion(s)" -ForegroundColor Gray
+        Write-Host ""
+        Write-Host "$([char]0x2139) INFO SUGGESTIONS ($InfoCount):" -ForegroundColor Cyan
+        $InfoIssues | ForEach-Object {
+            Write-Host "  [INFO] $($_.file):$($_.line)" -ForegroundColor Cyan
+            Write-Host "    $($_.message)"
+        }
     }
     
     Write-Host ""
@@ -570,17 +585,26 @@ if ($BlockCount -gt 0) {
 # No blocking issues - show summary
 Write-Host ""
 if ($TotalCount -eq 0) {
-    Write-ColorOutput "[AI Review] No issues found. Commit allowed." 'Green'
+    Write-Success "No issues found. Commit allowed."
 }
 else {
-    Write-ColorOutput "[AI Review] $WarnCount warning(s), $InfoCount suggestion(s). Commit allowed." 'Green'
+    Write-Success "Analysis complete. Commit allowed with $WarnCount warning(s) and $InfoCount suggestion(s)."
     
     if ($WarnCount -gt 0) {
-        $WarnIssues | Select-Object -First 3 | ForEach-Object {
-            Write-Host "  [WARN] $($_.file):$($_.line) - $($_.message)" -ForegroundColor Yellow
+        Write-Host ""
+        Write-Host "$([char]0x26A0) WARNINGS ($WarnCount):" -ForegroundColor Yellow
+        $WarnIssues | ForEach-Object {
+            Write-Host "  [WARN] $($_.file):$($_.line)" -ForegroundColor Yellow
+            Write-Host "    $($_.message)"
         }
-        if ($WarnCount -gt 3) {
-            Write-Host "  ... +$($WarnCount - 3) more warnings" -ForegroundColor Yellow
+    }
+    
+    if ($InfoCount -gt 0) {
+        Write-Host ""
+        Write-Host "$([char]0x2139) INFO SUGGESTIONS ($InfoCount):" -ForegroundColor Cyan
+        $InfoIssues | ForEach-Object {
+            Write-Host "  [INFO] $($_.file):$($_.line)" -ForegroundColor Cyan
+            Write-Host "    $($_.message)"
         }
     }
 }
