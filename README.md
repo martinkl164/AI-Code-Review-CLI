@@ -6,6 +6,7 @@
 
 **A portable, CLI-based AI code review system that performs comprehensive reviews at commit time—powered by GitHub Copilot.**
 
+[![CI](https://github.com/martinkl164/AI-Code-Review-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/martinkl164/AI-Code-Review-CLI/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](https://github.com)
 [![GitHub Copilot](https://img.shields.io/badge/Powered%20by-GitHub%20Copilot-8A2BE2)](https://github.com/features/copilot)
