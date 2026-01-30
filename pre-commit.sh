@@ -1,5 +1,5 @@
-#!/bin/sh
-# POSIX-compliant pre-commit hook for Java AI code review (macOS/Linux)
+#!/bin/bash
+# Bash pre-commit hook for Java AI code review (macOS/Linux)
 # Requires: GitHub CLI with Copilot extension installed and authenticated
 # Usage: Run install.sh to set up, or manually copy to .git/hooks/pre-commit and make executable
 #

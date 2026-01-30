@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # Installation script for Java AI Code Review pre-commit hook (macOS/Linux)
 # This script sets up the pre-commit hook and verifies dependencies
 #
