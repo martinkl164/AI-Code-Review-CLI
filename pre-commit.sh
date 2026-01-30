@@ -66,7 +66,7 @@ run_agent() {
   local AGENT_DIR="$AI_DIR/agents/$AGENT_NAME"
   local AGENT_CHECKLIST="$AGENT_DIR/checklist.yaml"
   local AGENT_PROMPT="$AGENT_DIR/prompt.txt"
-  local AGENT_OUTPUT="$AGENT_DIR/review.json"
+  local AGENT_OUTPUT="$AGENT_DIR/review.md"
   
   # Check if agent files exist
   if [ ! -f "$AGENT_CHECKLIST" ] || [ ! -f "$AGENT_PROMPT" ]; then
@@ -336,8 +336,8 @@ fi
 
 # Read first agent result to check for quota errors
 SECURITY_REPORT=""
-if [ -f "$AI_DIR/agents/security/review.json" ]; then
-  SECURITY_REPORT=$(cat "$AI_DIR/agents/security/review.json")
+if [ -f "$AI_DIR/agents/security/review.md" ]; then
+  SECURITY_REPORT=$(cat "$AI_DIR/agents/security/review.md")
 fi
 
 # Check for quota/API errors
@@ -358,9 +358,9 @@ if echo "$SECURITY_REPORT" | grep -qiE "quota exceeded|402|no quota|rate limit|C
 fi
 
 # Read agent results
-SECURITY_REPORT=$(cat "$AI_DIR/agents/security/review.json" 2>/dev/null || echo "Error reading security report")
-NAMING_REPORT=$(cat "$AI_DIR/agents/naming/review.json" 2>/dev/null || echo "Error reading naming report")
-QUALITY_REPORT=$(cat "$AI_DIR/agents/quality/review.json" 2>/dev/null || echo "Error reading quality report")
+SECURITY_REPORT=$(cat "$AI_DIR/agents/security/review.md" 2>/dev/null || echo "Error reading security report")
+NAMING_REPORT=$(cat "$AI_DIR/agents/naming/review.md" 2>/dev/null || echo "Error reading naming report")
+QUALITY_REPORT=$(cat "$AI_DIR/agents/quality/review.md" 2>/dev/null || echo "Error reading quality report")
 
 # Count issues per agent - try markdown format first, then JSON
 SECURITY_COUNT=$(echo "$SECURITY_REPORT" | grep -c '^\### \[' 2>/dev/null)

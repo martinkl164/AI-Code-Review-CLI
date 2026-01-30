@@ -119,14 +119,14 @@ Final Summary
 
 ### Updated Files
 - `pre-commit.sh` ✅ (multi-agent logic + fixes)
-- `.gitignore` ✅ (excludes generated review.json files)
+- `.gitignore` ✅ (excludes generated review.md files)
 - `.git/hooks/pre-commit` ✅ (copied from pre-commit.sh)
 
 ### Generated Files (Gitignored)
-- `.ai/agents/security/review.json` ❌
-- `.ai/agents/naming/review.json` ❌
-- `.ai/agents/quality/review.json` ❌
-- `.ai/last_review.json` ❌
+- `.ai/agents/security/review.md` ❌ (markdown format)
+- `.ai/agents/naming/review.md` ❌ (markdown format)
+- `.ai/agents/quality/review.md` ❌ (markdown format)
+- `.ai/last_review.json` ❌ (final summary in JSON)
 
 ## 🎯 Ready to Use
 

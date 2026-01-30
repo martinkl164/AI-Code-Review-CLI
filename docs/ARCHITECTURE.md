@@ -22,9 +22,9 @@ flowchart TB
         G --> H1[Security Agent]
         G --> H2[Naming Agent]
         G --> H3[Quality Agent]
-        H1 --> I1[security/review.json]
-        H2 --> I2[naming/review.json]
-        H3 --> I3[quality/review.json]
+        H1 --> I1[security/review.md]
+        H2 --> I2[naming/review.md]
+        H3 --> I3[quality/review.md]
     end
     
     subgraph Aggregation[Result Aggregation]
@@ -83,7 +83,7 @@ The system uses 4 specialized agents running in parallel for faster, more thorou
 | `.ai/agents/quality/checklist.yaml` | Code quality rules | Config |
 | `.ai/agents/quality/prompt.txt` | Quality agent prompt | Template |
 | `.ai/agents/summarizer/prompt.txt` | Summarizer prompt | Template |
-| `.ai/agents/*/review.json` | Agent outputs (markdown format) | Output |
+| `.ai/agents/*/review.md` | Agent outputs (markdown format) | Output |
 | `.ai/last_review.json` | Final aggregated review | Output |
 
 **Note**: Agent output files use `.json` extension for historical reasons but contain markdown format.
@@ -111,7 +111,7 @@ The system uses 4 specialized agents running in parallel for faster, more thorou
 │ + prompt        │ + prompt        │ + prompt                │
 │ + diff          │ + diff          │ + diff                  │
 │       ↓         │       ↓         │       ↓                 │
-│ review.json     │ review.json     │ review.json             │
+│ review.md       │ review.md       │ review.md               │
 └─────────────────┴─────────────────┴─────────────────────────┘
                             │
                             ↓

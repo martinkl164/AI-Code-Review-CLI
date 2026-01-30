@@ -224,7 +224,7 @@ Write-Host "  - Review results are saved to:"
 Write-ColorOutput "    .ai/last_review.json" 'Cyan'
 Write-Host ""
 Write-Host "  - View agent reports:"
-Write-ColorOutput "    Get-Content .ai/agents/security/review.json" 'Cyan'
-Write-ColorOutput "    Get-Content .ai/agents/naming/review.json" 'Cyan'
-Write-ColorOutput "    Get-Content .ai/agents/quality/review.json" 'Cyan'
+Write-ColorOutput "    Get-Content .ai/agents/security/review.md" 'Cyan'
+Write-ColorOutput "    Get-Content .ai/agents/naming/review.md" 'Cyan'
+Write-ColorOutput "    Get-Content .ai/agents/quality/review.md" 'Cyan'
 Write-Host ""

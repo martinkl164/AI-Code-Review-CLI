@@ -68,15 +68,15 @@ Multi-Agent Code Review System
 │   ├── security/
 │   │   ├── checklist.yaml          ✅ Committed (8 BLOCK-severity rules)
 │   │   ├── prompt.txt              ✅ Committed (Security-focused)
-│   │   └── review.json             ❌ Gitignored (Generated markdown output)
+│   │   └── review.md               ❌ Gitignored (Generated markdown output)
 │   ├── naming/
 │   │   ├── checklist.yaml          ✅ Committed (1 INFO-severity rule)
 │   │   ├── prompt.txt              ✅ Committed (Naming-focused)
-│   │   └── review.json             ❌ Gitignored (Generated markdown output)
+│   │   └── review.md               ❌ Gitignored (Generated markdown output)
 │   ├── quality/
 │   │   ├── checklist.yaml          ✅ Committed (7 rules: 2 BLOCK, 5 WARN)
 │   │   ├── prompt.txt              ✅ Committed (Quality-focused)
-│   │   └── review.json             ❌ Gitignored (Generated markdown output)
+│   │   └── review.md               ❌ Gitignored (Generated markdown output)
 │   ├── summarizer/
 │   │   └── prompt.txt              ✅ Committed (Aggregation logic)
 │   └── README.md                   ✅ Documentation
@@ -154,13 +154,13 @@ Comprehensive logging at every stage:
 
 ```gitignore
 # Multi-agent review results (generated at commit time)
-.ai/agents/*/review.json
-.ai/agents/security/review.json
-.ai/agents/naming/review.json
-.ai/agents/quality/review.json
+.ai/agents/*/review.md
+.ai/agents/security/review.md
+.ai/agents/naming/review.md
+.ai/agents/quality/review.md
 ```
 
-✅ Verified: `git check-ignore` confirms all review.json files are ignored
+✅ Verified: `git check-ignore` confirms all review.md files are ignored
 
 ## 📝 Key Features Implemented
 
@@ -223,10 +223,10 @@ $ git status
 Changes to be committed:
   new file:   .ai/agents/naming/checklist.yaml    ✅ Committed
   new file:   .ai/agents/naming/prompt.txt        ✅ Committed
-  # review.json files NOT shown                   ✅ Ignored
+  # review.md files NOT shown                     ✅ Ignored
 
-$ git check-ignore -v .ai/agents/security/review.json
-.gitignore:31:.ai/agents/security/review.json    ✅ Properly ignored
+$ git check-ignore -v .ai/agents/security/review.md
+.gitignore:31:.ai/agents/security/review.md      ✅ Properly ignored
 ```
 
 ## 📈 Performance Comparison
@@ -280,9 +280,9 @@ git commit -m "Add feature"
 git commit --no-verify -m "Hotfix"
 
 # View Last Review
-Get-Content .ai/agents/security/review.json
-Get-Content .ai/agents/naming/review.json
-Get-Content .ai/agents/quality/review.json
+Get-Content .ai/agents/security/review.md
+Get-Content .ai/agents/naming/review.md
+Get-Content .ai/agents/quality/review.md
 ```
 
 ### macOS/Linux (Bash)
@@ -297,8 +297,8 @@ git commit -m "Add feature"
 git commit --no-verify -m "Hotfix"
 
 # View Last Review
-cat .ai/agents/security/review.json
-less .ai/agents/naming/review.json
+cat .ai/agents/security/review.md
+less .ai/agents/naming/review.md
 ```
 
 ## 📚 Documentation

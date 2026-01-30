@@ -27,10 +27,10 @@ application-local.yml
 .ai/*.log
 
 # Multi-agent review results (generated at commit time)
-.ai/agents/*/review.json
-.ai/agents/security/review.json
-.ai/agents/naming/review.json
-.ai/agents/quality/review.json
+.ai/agents/*/review.md
+.ai/agents/security/review.md
+.ai/agents/naming/review.md
+.ai/agents/quality/review.md
 
 # Git hooks (users should install via install.sh)
 .git/hooks/pre-commit

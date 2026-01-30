@@ -106,7 +106,7 @@ function Invoke-Agent {
     $AgentDir = Join-Path $AI_DIR "agents/$AgentName"
     $AgentChecklist = Join-Path $AgentDir "checklist.yaml"
     $AgentPrompt = Join-Path $AgentDir "prompt.txt"
-    $AgentOutput = Join-Path $AgentDir "review.json"
+    $AgentOutput = Join-Path $AgentDir "review.md"
     
     # Check if agent files exist
     if (-not (Test-Path $AgentChecklist) -or -not (Test-Path $AgentPrompt)) {
@@ -336,7 +336,7 @@ $SecurityJob = Start-Job -ScriptBlock {
     $AgentDir = Join-Path $AI_DIR "agents/$AgentName"
     $AgentChecklist = Join-Path $AgentDir "checklist.yaml"
     $AgentPrompt = Join-Path $AgentDir "prompt.txt"
-    $AgentOutput = Join-Path $AgentDir "review.json"
+    $AgentOutput = Join-Path $AgentDir "review.md"
     
     if ((Test-Path $AgentChecklist) -and (Test-Path $AgentPrompt)) {
         $ChecklistContent = Get-Content $AgentChecklist -Raw -Encoding UTF8
@@ -378,7 +378,7 @@ $NamingJob = Start-Job -ScriptBlock {
     $AgentDir = Join-Path $AI_DIR "agents/$AgentName"
     $AgentChecklist = Join-Path $AgentDir "checklist.yaml"
     $AgentPrompt = Join-Path $AgentDir "prompt.txt"
-    $AgentOutput = Join-Path $AgentDir "review.json"
+    $AgentOutput = Join-Path $AgentDir "review.md"
     
     if ((Test-Path $AgentChecklist) -and (Test-Path $AgentPrompt)) {
         $ChecklistContent = Get-Content $AgentChecklist -Raw -Encoding UTF8
@@ -420,7 +420,7 @@ $QualityJob = Start-Job -ScriptBlock {
     $AgentDir = Join-Path $AI_DIR "agents/$AgentName"
     $AgentChecklist = Join-Path $AgentDir "checklist.yaml"
     $AgentPrompt = Join-Path $AgentDir "prompt.txt"
-    $AgentOutput = Join-Path $AgentDir "review.json"
+    $AgentOutput = Join-Path $AgentDir "review.md"
     
     if ((Test-Path $AgentChecklist) -and (Test-Path $AgentPrompt)) {
         $ChecklistContent = Get-Content $AgentChecklist -Raw -Encoding UTF8
@@ -483,8 +483,8 @@ if ($SecurityExit -ne 0 -and $NamingExit -ne 0 -and $QualityExit -ne 0) {
 }
 
 # Read agent results
-$SecurityReport = if (Test-Path "$AI_DIR/agents/security/review.json") {
-    Get-Content "$AI_DIR/agents/security/review.json" -Raw -Encoding UTF8
+$SecurityReport = if (Test-Path "$AI_DIR/agents/security/review.md") {
+    Get-Content "$AI_DIR/agents/security/review.md" -Raw -Encoding UTF8
 } else { "Error reading security report" }
 
 # Check for quota/API errors in agent output
@@ -504,12 +504,12 @@ if ($SecurityReport -match 'Quota exceeded|402|no quota|rate limit|CAPIError') {
     exit 1
 }
 
-$NamingReport = if (Test-Path "$AI_DIR/agents/naming/review.json") {
-    Get-Content "$AI_DIR/agents/naming/review.json" -Raw -Encoding UTF8
+$NamingReport = if (Test-Path "$AI_DIR/agents/naming/review.md") {
+    Get-Content "$AI_DIR/agents/naming/review.md" -Raw -Encoding UTF8
 } else { "Error reading naming report" }
 
-$QualityReport = if (Test-Path "$AI_DIR/agents/quality/review.json") {
-    Get-Content "$AI_DIR/agents/quality/review.json" -Raw -Encoding UTF8
+$QualityReport = if (Test-Path "$AI_DIR/agents/quality/review.md") {
+    Get-Content "$AI_DIR/agents/quality/review.md" -Raw -Encoding UTF8
 } else { "Error reading quality report" }
 
 # Count issues per agent (quick count for progress display)

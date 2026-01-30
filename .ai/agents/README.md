@@ -25,7 +25,7 @@ This directory contains the configuration for a multi-agent code review system t
         v                   v                   v             v                v
 ┌────────────────┐  ┌────────────────┐  ┌────────────────┐
 │ security/      │  │ naming/        │  │ quality/       │
-│ review.json    │  │ review.json    │  │ review.json    │
+│ review.md      │  │ review.md      │  │ review.md      │
 └───────┬────────┘  └───────┬────────┘  └───────┬────────┘
         │                   │                   │
         └───────────────────┴───────────────────┘
@@ -66,7 +66,7 @@ This directory contains the configuration for a multi-agent code review system t
 **Files**:
 - `checklist.yaml` - Security rules
 - `prompt.txt` - Security-focused prompt
-- `review.json` - Generated results (gitignored)
+- `review.md` - Generated results (gitignored)
 
 ### 2. Naming Agent (`naming/`)
 **Focus**: Java naming conventions and code style
@@ -84,7 +84,7 @@ This directory contains the configuration for a multi-agent code review system t
 **Files**:
 - `checklist.yaml` - Naming convention rules
 - `prompt.txt` - Naming-focused prompt
-- `review.json` - Generated results (gitignored)
+- `review.md` - Generated results (gitignored)
 
 ### 3. Code Quality Agent (`quality/`)
 **Focus**: Code correctness, thread safety, best practices
@@ -103,7 +103,7 @@ This directory contains the configuration for a multi-agent code review system t
 **Files**:
 - `checklist.yaml` - Quality rules
 - `prompt.txt` - Quality-focused prompt
-- `review.json` - Generated results (gitignored)
+- `review.md` - Generated results (gitignored)
 
 ### 4. Summarizer Agent (`summarizer/`)
 **Focus**: Aggregating and prioritizing findings
@@ -174,10 +174,10 @@ Brief summary of findings
 Generated review files are excluded from version control:
 
 ```gitignore
-.ai/agents/*/review.json
-.ai/agents/security/review.json
-.ai/agents/naming/review.json
-.ai/agents/quality/review.json
+.ai/agents/*/review.md
+.ai/agents/security/review.md
+.ai/agents/naming/review.md
+.ai/agents/quality/review.md
 ```
 
 Configuration files (checklist.yaml, prompt.txt) **are committed**.
@@ -232,7 +232,7 @@ Configuration files (checklist.yaml, prompt.txt) **are committed**.
 
 5. Update `.gitignore`:
    ```gitignore
-   .ai/agents/performance/review.json
+   .ai/agents/performance/review.md
    ```
 
 ### Customizing Rules
@@ -324,14 +324,14 @@ AI REVIEW: COMMIT BLOCKED
 ### Parse error in results
 - Check agent output:
   ```powershell
-  Get-Content .ai/agents/security/review.json
+  Get-Content .ai/agents/security/review.md
   ```
 - Output is in markdown format (despite .json extension)
 
 ### Review files appearing in git status
 - Verify .gitignore:
   ```powershell
-  git check-ignore -v .ai/agents/security/review.json
+  git check-ignore -v .ai/agents/security/review.md
   ```
 
 ## Performance
@@ -347,7 +347,7 @@ AI REVIEW: COMMIT BLOCKED
 
 ## Security
 
-All agents receive the same diff content. No sensitive data is stored in review.json files (they're gitignored).
+All agents receive the same diff content. No sensitive data is stored in review.md files (they're gitignored).
 
 Agents never echo back hardcoded secrets - they reference them as "[REDACTED]" or describe their location.
 

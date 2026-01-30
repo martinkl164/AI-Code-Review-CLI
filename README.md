@@ -337,9 +337,9 @@ git commit -m "Add user authentication with secure password handling"
 Get-Content .ai/last_review.json
 
 # View individual agent reports
-Get-Content .ai/agents/security/review.json
-Get-Content .ai/agents/naming/review.json
-Get-Content .ai/agents/quality/review.json
+Get-Content .ai/agents/security/review.md
+Get-Content .ai/agents/naming/review.md
+Get-Content .ai/agents/quality/review.md
 
 # Search for BLOCK issues
 Select-String -Path .ai/last_review.json -Pattern "\[BLOCK\]"
