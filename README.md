@@ -6,7 +6,7 @@
 
 **A portable, CLI-based AI code review system that performs comprehensive reviews at commit time—powered by GitHub Copilot.**
 
-[![CI](https://github.com/martinkl164/AI-Code-Review-CLI/actions/workflows/ci.yml/badge.svg)](https://github.com/martinkl164/AI-Code-Review-CLI/actions/workflows/ci.yml)
+
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)](https://github.com)
 [![GitHub Copilot](https://img.shields.io/badge/Powered%20by-GitHub%20Copilot-8A2BE2)](https://github.com/features/copilot)
@@ -37,25 +37,7 @@ You're about to commit code with a hardcoded password. Or a SQL injection vulner
 
 This tool intercepts your commits **before they happen**, analyzes your staged changes with AI, and **blocks commits that contain critical security, correctness, or quality issues**.
 
-```
-$ git commit -m "Add user authentication"
-
-╔═══════════════════════════════════════════════════════════╗
-║  ❌ AI REVIEW: COMMIT BLOCKED                             ║
-╚═══════════════════════════════════════════════════════════╝
-
-Found 2 critical issue(s):
-
-  ❌ [BLOCK] src/main/java/UserService.java:42
-     Hardcoded database password detected. Use environment 
-     variables or a secure configuration management system.
-
-  ❌ [BLOCK] src/main/java/UserService.java:89
-     SQL injection vulnerability: query concatenates user input
-     directly. Use PreparedStatement with parameterized queries.
-
-Fix these issues or use 'git commit --no-verify' to bypass.
-```
+![AI Code Review Output Example](./docs/output_example.png.png)
 
 **Fix the issue. Commit again. Ship secure code.**
 
