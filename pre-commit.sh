@@ -15,6 +15,10 @@ PROMPT_FILE="$AI_DIR/java_review_prompt.txt"
 LAST_REVIEW_FILE="$AI_DIR/last_review.json"
 MAX_DIFF_SIZE=20000 # bytes
 
+# AI Model configuration (can be overridden via environment variable)
+# Available: gpt-4.1, gpt-5, gpt-5-mini, claude-sonnet-4, claude-sonnet-4.5, etc.
+AI_MODEL="${AI_REVIEW_MODEL:-gpt-4.1}"
+
 # Use temporary directory
 if [ -n "$TMPDIR" ]; then
   TEMP_DIR="$TMPDIR"
@@ -33,12 +37,14 @@ if [ -t 1 ]; then
   YELLOW='\033[1;33m'
   GREEN='\033[0;32m'
   BLUE='\033[0;34m'
+  CYAN='\033[0;36m'
   NC='\033[0m' # No Color
 else
   RED=''
   YELLOW=''
   GREEN=''
   BLUE=''
+  CYAN=''
   NC=''
 fi
 
@@ -84,7 +90,7 @@ run_agent() {
   ' "$AGENT_PROMPT")
   
   # Call Copilot CLI directly
-  REVIEW_OUTPUT=$(copilot -p "$AGENT_FULL_PROMPT" --silent --allow-all-tools --no-color 2>&1 || echo "# Error
+  REVIEW_OUTPUT=$(copilot -p "$AGENT_FULL_PROMPT" --model "$AI_MODEL" --silent --allow-all-tools --no-color 2>&1 || echo "# Error
 
 Agent failed to execute")
   
@@ -127,7 +133,7 @@ run_summarizer_agent() {
   local FULL_PROMPT="$SUMMARIZER_FULL_PROMPT
 
 CRITICAL: Output ONLY valid JSON."
-  SUMMARIZER_OUTPUT=$(copilot -p "$FULL_PROMPT" --silent --allow-all-tools --no-color 2>&1 || echo '{"agent":"summarizer","issues":[],"summary":"API error","recommendation":"ALLOW_COMMIT"}')
+  SUMMARIZER_OUTPUT=$(copilot -p "$FULL_PROMPT" --model "$AI_MODEL" --silent --allow-all-tools --no-color 2>&1 || echo '{"agent":"summarizer","issues":[],"summary":"API error","recommendation":"ALLOW_COMMIT"}')
   
   # Extract JSON
   local SUMMARIZER_JSON=$(echo "$SUMMARIZER_OUTPUT" | sed -n '/```json/,/```/p' | sed '1d;$d' | tr -d '\n' || echo "")
@@ -292,26 +298,15 @@ DIFF_CONTENT=$(cat "$DIFF_FILE")
 # =============================================================================
 
 echo ""
-echo "${BLUE}============================================${NC}"
-echo "${BLUE}Multi-Agent Code Review System${NC}"
-echo "${BLUE}============================================${NC}"
-echo ""
-echo "${BLUE}[AI Review]${NC} Launching specialized agents in parallel..."
-echo "  ?? Security Agent (checking OWASP vulnerabilities, hardcoded secrets, injection attacks)"
-echo "  ?? Naming Agent (checking Java conventions: PascalCase, camelCase, UPPER_SNAKE_CASE)"
-echo "  ? Code Quality Agent (checking correctness, thread safety, exception handling)"
-echo ""
+echo "${BLUE}[AI Review]${NC} Running analysis (model: $AI_MODEL)..."
 
 # Run agents in parallel
-echo "${BLUE}[AI Review]${NC} ??? Security Agent: Running..."
 run_agent "security" "$DIFF_CONTENT" &
 SECURITY_PID=$!
 
-echo "${BLUE}[AI Review]${NC} ??? Naming Agent: Running..."
 run_agent "naming" "$DIFF_CONTENT" &
 NAMING_PID=$!
 
-echo "${BLUE}[AI Review]${NC} ?? Code Quality Agent: Running..."
 run_agent "quality" "$DIFF_CONTENT" &
 QUALITY_PID=$!
 
@@ -326,13 +321,40 @@ QUALITY_EXIT=$?
 # Check if agents completed successfully
 if [ $SECURITY_EXIT -ne 0 ] && [ $NAMING_EXIT -ne 0 ] && [ $QUALITY_EXIT -ne 0 ]; then
   echo ""
-  printf "${YELLOW}???????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????${NC}\n"
-  printf "${YELLOW}???  Multi-Agent Review: NOT AVAILABLE                         ???${NC}\n"
-  printf "${YELLOW}??????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????????${NC}\n"
+  printf "${RED}========================================================${NC}\n"
+  printf "${RED}  AI REVIEW: SERVICE UNAVAILABLE                        ${NC}\n"
+  printf "${YELLOW}========================================================${NC}\n"
   echo ""
-  printf "${GREEN}[AI Review]${NC} Allowing commit (AI service unavailable - manual review recommended)\n"
+  echo "All AI agents failed to complete. The review could not be performed."
   echo ""
-  exit 0
+  printf "${YELLOW}To commit without AI review, run:${NC}\n"
+  echo ""
+  printf "${CYAN}  git commit --no-verify -m \"your message\"${NC}\n"
+  echo ""
+  exit 1
+fi
+
+# Read first agent result to check for quota errors
+SECURITY_REPORT=""
+if [ -f "$AI_DIR/agents/security/review.json" ]; then
+  SECURITY_REPORT=$(cat "$AI_DIR/agents/security/review.json")
+fi
+
+# Check for quota/API errors
+if echo "$SECURITY_REPORT" | grep -qiE "quota exceeded|402|no quota|rate limit|CAPIError"; then
+  echo ""
+  printf "${RED}========================================================${NC}\n"
+  printf "${RED}  AI REVIEW: COPILOT QUOTA EXCEEDED                     ${NC}\n"
+  printf "${YELLOW}========================================================${NC}\n"
+  echo ""
+  echo "Your GitHub Copilot usage quota has been exceeded."
+  echo "Check your plan: https://github.com/features/copilot/plans"
+  echo ""
+  printf "${YELLOW}To commit without AI review, run:${NC}\n"
+  echo ""
+  printf "${CYAN}  git commit --no-verify -m \"your message\"${NC}\n"
+  echo ""
+  exit 1
 fi
 
 # Read agent results
@@ -356,18 +378,11 @@ if [ "$QUALITY_COUNT" = "0" ]; then
   QUALITY_COUNT=$(echo "$QUALITY_REPORT" | grep -c '"severity"' 2>/dev/null || echo "0")
 fi
 
-echo "${BLUE}[AI Review]${NC} ??? Security Agent: Complete (found $SECURITY_COUNT issues)"
-echo "${BLUE}[AI Review]${NC} ??? Naming Agent: Complete (found $NAMING_COUNT issues)"
-echo "${BLUE}[AI Review]${NC} ?? Code Quality Agent: Complete (found $QUALITY_COUNT issues)"
+echo "${BLUE}[AI Review]${NC} -> Security: $SECURITY_COUNT | Naming: $NAMING_COUNT | Quality: $QUALITY_COUNT"
 
 # Run summarizer to aggregate results
-echo ""
-echo "${BLUE}[AI Review]${NC} Aggregating results from all agents..."
-echo "${BLUE}[AI Review]${NC} ? Summarizer Agent: Deduplicating and prioritizing findings..."
-
+echo "${BLUE}[AI Review]${NC} Aggregating results..."
 FINAL_REPORT=$(run_summarizer_agent "$SECURITY_REPORT" "$NAMING_REPORT" "$QUALITY_REPORT")
-
-echo "${BLUE}[AI Review]${NC} ? Summarizer Agent: Complete"
 
 # Display per-agent results
 echo ""

@@ -434,9 +434,18 @@ rules:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `AI_REVIEW_MODEL` | `gpt-4.1` | AI model for code review (see models below) |
 | `AI_REVIEW_ENABLED` | `true` | Set to `false` to skip AI review |
 | `SKIP_SENSITIVE_CHECK` | `false` | Skip sensitive data warning prompt |
 | `FORCE_COLOR` | `false` | Force colored output (bash only) |
+
+**Available models:** `gpt-4.1`, `gpt-5`, `gpt-5-mini`, `gpt-5.1`, `gpt-5.1-codex`, `gpt-5.2`, `claude-sonnet-4`, `claude-sonnet-4.5`, `claude-haiku-4.5`, `claude-opus-4.5`, `gemini-3-pro-preview`
+
+```powershell
+# Use a different model
+$env:AI_REVIEW_MODEL = 'claude-sonnet-4.5'
+git commit -m "message"
+```
 
 ---
 

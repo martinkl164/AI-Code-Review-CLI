@@ -28,6 +28,12 @@ $MAX_DIFF_SIZE = 20000  # bytes
 # We use a lower threshold to be safe with escaping overhead
 $MAX_ARG_LENGTH = 7000
 
+# AI Model configuration (can be overridden via environment variable)
+# Available models: gpt-4.1, gpt-5, gpt-5-mini, gpt-5.1, gpt-5.1-codex, gpt-5.1-codex-mini,
+#                   gpt-5.1-codex-max, gpt-5.2, gpt-5.2-codex, claude-sonnet-4, claude-sonnet-4.5,
+#                   claude-haiku-4.5, claude-opus-4.5, gemini-3-pro-preview
+$AI_MODEL = if ($env:AI_REVIEW_MODEL) { $env:AI_REVIEW_MODEL } else { "gpt-4.1" }
+
 # Temporary directory
 $TEMP_DIR = Join-Path $AI_DIR "temp"
 if (-not (Test-Path $TEMP_DIR)) {
@@ -43,7 +49,8 @@ if (-not (Test-Path $TEMP_DIR)) {
 function Invoke-CopilotWithPrompt {
     param(
         [string]$Prompt,
-        [string]$TempFilePrefix = "copilot_prompt"
+        [string]$TempFilePrefix = "copilot_prompt",
+        [string]$Model = $script:AI_MODEL
     )
     
     # Save prompt to temp file
@@ -57,8 +64,8 @@ function Invoke-CopilotWithPrompt {
         # Create a short instruction prompt that tells copilot to read the file
         $InstructionPrompt = "Read and execute the instructions in the file: $PromptFile"
         
-        # Call copilot with the instruction prompt
-        $Output = & copilot -p $InstructionPrompt --silent --allow-all-tools --add-dir $TEMP_DIR 2>&1
+        # Call copilot with the instruction prompt and configured model
+        $Output = & copilot -p $InstructionPrompt --model $Model --silent --allow-all-tools --add-dir $TEMP_DIR 2>&1
         
         return $Output
     }
@@ -186,15 +193,12 @@ function Invoke-SummarizerAgent {
     return $SummarizerJson
 }
 
-function Show-AgentResults {
-    param(
-        [string]$AgentReport,
-        [string]$AgentName,
-        [string]$AgentDisplay
-    )
+function Get-AgentIssuesFromReport {
+    param([string]$AgentReport)
     
-    # Try to extract JSON from markdown code block
+    $Issues = @()
     $JsonContent = $null
+    
     if ($AgentReport -match '```json\s*([\s\S]*?)\s*```') {
         $JsonContent = $Matches[1]
     }
@@ -202,55 +206,15 @@ function Show-AgentResults {
         $JsonContent = $Matches[0]
     }
     
-    $IssueCount = 0
-    $Summary = "No summary available"
-    $Issues = @()
-    
     if ($JsonContent) {
         try {
             $JsonObj = $JsonContent | ConvertFrom-Json -ErrorAction Stop
-            $Summary = $JsonObj.summary
-            $Issues = $JsonObj.issues
-            $IssueCount = $Issues.Count
+            $Issues = @($JsonObj.issues)
         }
-        catch {
-            # Fall back to regex counting
-            $IssueCount = ([regex]::Matches($AgentReport, '"severity"')).Count
-        }
-    }
-    else {
-        # Fall back to counting severity occurrences
-        $IssueCount = ([regex]::Matches($AgentReport, '"severity"')).Count
+        catch { }
     }
     
-    Write-Host ""
-    Write-ColorOutput "============================================" 'Cyan'
-    Write-ColorOutput "$AgentDisplay Agent Results" 'Cyan'
-    Write-ColorOutput "============================================" 'Cyan'
-    Write-Host "  Summary: $Summary"
-    Write-Host "  Issues found: $IssueCount"
-    
-    if ($Issues.Count -gt 0) {
-        Write-Host ""
-        $Issues | Select-Object -First 5 | ForEach-Object {
-            $severity = $_.severity
-            $file = $_.file
-            $line = $_.line
-            $message = $_.message
-            $color = switch ($severity) {
-                'BLOCK' { 'Red' }
-                'CRITICAL' { 'Red' }
-                'WARN' { 'Yellow' }
-                'WARNING' { 'Yellow' }
-                default { 'White' }
-            }
-            Write-Host "  [$severity] ${file}:${line}" -ForegroundColor $color
-            Write-Host "    $message"
-        }
-        if ($Issues.Count -gt 5) {
-            Write-Host "  ... and $($Issues.Count - 5) more issues"
-        }
-    }
+    return $Issues
 }
 
 # ============================================================================
@@ -354,29 +318,18 @@ if ($env:SKIP_SENSITIVE_CHECK -ne 'true') {
 # ============================================================================
 
 Write-Host ""
-Write-ColorOutput "============================================" 'Cyan'
-Write-ColorOutput "Multi-Agent Code Review System" 'Cyan'
-Write-ColorOutput "============================================" 'Cyan'
-Write-Host ""
-Write-Info "Launching specialized agents in parallel..."
-Write-Host "  -> Security Agent (checking OWASP vulnerabilities, hardcoded secrets, injection attacks)"
-Write-Host "  -> Naming Agent (checking Java conventions: PascalCase, camelCase, UPPER_SNAKE_CASE)"
-Write-Host "  -> Code Quality Agent (checking correctness, thread safety, exception handling)"
-Write-Host ""
+Write-ColorOutput "[AI Review] Running analysis (model: $AI_MODEL)..." 'Cyan'
 
 # Save diff to temp file for parallel jobs
 $DiffTempFile = Join-Path $TEMP_DIR "diff_content_$PID.txt"
 $DiffContent | Set-Content $DiffTempFile -Encoding UTF8
 
 # Run agents in parallel using PowerShell jobs
-# Each job writes prompt to a temp file and has copilot read it (avoids argument length limits)
-Write-Info "-> Security Agent: Running..."
 $SecurityJob = Start-Job -ScriptBlock {
-    param($ScriptRoot, $DiffFile)
+    param($ScriptRoot, $DiffFile, $Model)
     Set-Location $ScriptRoot
     $DiffContent = Get-Content $DiffFile -Raw -Encoding UTF8
     
-    # Inline agent execution
     $AI_DIR = ".ai"
     $TEMP_DIR = Join-Path $AI_DIR "temp"
     $AgentName = "security"
@@ -390,15 +343,13 @@ $SecurityJob = Start-Job -ScriptBlock {
         $PromptTemplate = Get-Content $AgentPrompt -Raw -Encoding UTF8
         $FullPrompt = $PromptTemplate -replace '\{checklist\}', $ChecklistContent -replace '\{diff\}', $DiffContent
         
-        # Save prompt to file for copilot to read
         $PromptFile = Join-Path $TEMP_DIR "${AgentName}_job_prompt_$PID.txt"
         $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
         [System.IO.File]::WriteAllText($PromptFile, $FullPrompt, $Utf8NoBom)
         
         try {
-            # Have copilot read the prompt file
             $InstructionPrompt = "Read and execute the instructions in the file: $PromptFile"
-            $ReviewOutput = & copilot -p $InstructionPrompt --silent --allow-all-tools --add-dir $TEMP_DIR 2>&1
+            $ReviewOutput = & copilot -p $InstructionPrompt --model $Model --silent --allow-all-tools --add-dir $TEMP_DIR 2>&1
         }
         catch {
             $ReviewOutput = "# Error`n`nAgent failed to execute: $_"
@@ -414,11 +365,10 @@ $SecurityJob = Start-Job -ScriptBlock {
         
         $ReviewOutput | Set-Content $AgentOutput -Encoding UTF8
     }
-} -ArgumentList (Get-Location).Path, $DiffTempFile
+} -ArgumentList (Get-Location).Path, $DiffTempFile, $AI_MODEL
 
-Write-Info "-> Naming Agent: Running..."
 $NamingJob = Start-Job -ScriptBlock {
-    param($ScriptRoot, $DiffFile)
+    param($ScriptRoot, $DiffFile, $Model)
     Set-Location $ScriptRoot
     $DiffContent = Get-Content $DiffFile -Raw -Encoding UTF8
     
@@ -435,14 +385,13 @@ $NamingJob = Start-Job -ScriptBlock {
         $PromptTemplate = Get-Content $AgentPrompt -Raw -Encoding UTF8
         $FullPrompt = $PromptTemplate -replace '\{checklist\}', $ChecklistContent -replace '\{diff\}', $DiffContent
         
-        # Save prompt to file for copilot to read
         $PromptFile = Join-Path $TEMP_DIR "${AgentName}_job_prompt_$PID.txt"
         $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
         [System.IO.File]::WriteAllText($PromptFile, $FullPrompt, $Utf8NoBom)
         
         try {
             $InstructionPrompt = "Read and execute the instructions in the file: $PromptFile"
-            $ReviewOutput = & copilot -p $InstructionPrompt --silent --allow-all-tools --add-dir $TEMP_DIR 2>&1
+            $ReviewOutput = & copilot -p $InstructionPrompt --model $Model --silent --allow-all-tools --add-dir $TEMP_DIR 2>&1
         }
         catch {
             $ReviewOutput = "# Error`n`nAgent failed to execute: $_"
@@ -458,11 +407,10 @@ $NamingJob = Start-Job -ScriptBlock {
         
         $ReviewOutput | Set-Content $AgentOutput -Encoding UTF8
     }
-} -ArgumentList (Get-Location).Path, $DiffTempFile
+} -ArgumentList (Get-Location).Path, $DiffTempFile, $AI_MODEL
 
-Write-Info "-> Code Quality Agent: Running..."
 $QualityJob = Start-Job -ScriptBlock {
-    param($ScriptRoot, $DiffFile)
+    param($ScriptRoot, $DiffFile, $Model)
     Set-Location $ScriptRoot
     $DiffContent = Get-Content $DiffFile -Raw -Encoding UTF8
     
@@ -479,14 +427,13 @@ $QualityJob = Start-Job -ScriptBlock {
         $PromptTemplate = Get-Content $AgentPrompt -Raw -Encoding UTF8
         $FullPrompt = $PromptTemplate -replace '\{checklist\}', $ChecklistContent -replace '\{diff\}', $DiffContent
         
-        # Save prompt to file for copilot to read
         $PromptFile = Join-Path $TEMP_DIR "${AgentName}_job_prompt_$PID.txt"
         $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
         [System.IO.File]::WriteAllText($PromptFile, $FullPrompt, $Utf8NoBom)
         
         try {
             $InstructionPrompt = "Read and execute the instructions in the file: $PromptFile"
-            $ReviewOutput = & copilot -p $InstructionPrompt --silent --allow-all-tools --add-dir $TEMP_DIR 2>&1
+            $ReviewOutput = & copilot -p $InstructionPrompt --model $Model --silent --allow-all-tools --add-dir $TEMP_DIR 2>&1
         }
         catch {
             $ReviewOutput = "# Error`n`nAgent failed to execute: $_"
@@ -502,7 +449,7 @@ $QualityJob = Start-Job -ScriptBlock {
         
         $ReviewOutput | Set-Content $AgentOutput -Encoding UTF8
     }
-} -ArgumentList (Get-Location).Path, $DiffTempFile
+} -ArgumentList (Get-Location).Path, $DiffTempFile, $AI_MODEL
 
 # Wait for all jobs to complete
 $AllJobs = @($SecurityJob, $NamingJob, $QualityJob)
@@ -522,19 +469,40 @@ Remove-Item $DiffTempFile -Force -ErrorAction SilentlyContinue
 # Check if all agents failed
 if ($SecurityExit -ne 0 -and $NamingExit -ne 0 -and $QualityExit -ne 0) {
     Write-Host ""
-    Write-ColorOutput "========================================================" 'Yellow'
-    Write-ColorOutput "  Multi-Agent Review: NOT AVAILABLE                     " 'Yellow'
+    Write-ColorOutput "========================================================" 'Red'
+    Write-ColorOutput "  AI REVIEW: SERVICE UNAVAILABLE                        " 'Red'
     Write-ColorOutput "========================================================" 'Yellow'
     Write-Host ""
-    Write-Success "Allowing commit (AI service unavailable - manual review recommended)"
+    Write-Host "All AI agents failed to complete. The review could not be performed."
     Write-Host ""
-    exit 0
+    Write-Host "To commit without AI review, run:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  git commit --no-verify -m `"your message`"" -ForegroundColor Cyan
+    Write-Host ""
+    exit 1
 }
 
 # Read agent results
 $SecurityReport = if (Test-Path "$AI_DIR/agents/security/review.json") {
     Get-Content "$AI_DIR/agents/security/review.json" -Raw -Encoding UTF8
 } else { "Error reading security report" }
+
+# Check for quota/API errors in agent output
+if ($SecurityReport -match 'Quota exceeded|402|no quota|rate limit|CAPIError') {
+    Write-Host ""
+    Write-ColorOutput "========================================================" 'Red'
+    Write-ColorOutput "  AI REVIEW: COPILOT QUOTA EXCEEDED                     " 'Red'
+    Write-ColorOutput "========================================================" 'Yellow'
+    Write-Host ""
+    Write-Host "Your GitHub Copilot usage quota has been exceeded."
+    Write-Host "Check your plan: https://github.com/features/copilot/plans"
+    Write-Host ""
+    Write-Host "To commit without AI review, run:" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "  git commit --no-verify -m `"your message`"" -ForegroundColor Cyan
+    Write-Host ""
+    exit 1
+}
 
 $NamingReport = if (Test-Path "$AI_DIR/agents/naming/review.json") {
     Get-Content "$AI_DIR/agents/naming/review.json" -Raw -Encoding UTF8
@@ -544,82 +512,22 @@ $QualityReport = if (Test-Path "$AI_DIR/agents/quality/review.json") {
     Get-Content "$AI_DIR/agents/quality/review.json" -Raw -Encoding UTF8
 } else { "Error reading quality report" }
 
-# Count issues per agent
-$SecurityCount = ([regex]::Matches($SecurityReport, '^\### \[', 'Multiline')).Count
-if ($SecurityCount -eq 0) {
-    $SecurityCount = ([regex]::Matches($SecurityReport, '"severity"')).Count
-}
+# Count issues per agent (quick count for progress display)
+$SecurityCount = ([regex]::Matches($SecurityReport, '"severity"')).Count
+$NamingCount = ([regex]::Matches($NamingReport, '"severity"')).Count
+$QualityCount = ([regex]::Matches($QualityReport, '"severity"')).Count
 
-$NamingCount = ([regex]::Matches($NamingReport, '^\### \[', 'Multiline')).Count
-if ($NamingCount -eq 0) {
-    $NamingCount = ([regex]::Matches($NamingReport, '"severity"')).Count
-}
+Write-Info "-> Security: $SecurityCount | Naming: $NamingCount | Quality: $QualityCount"
 
-$QualityCount = ([regex]::Matches($QualityReport, '^\### \[', 'Multiline')).Count
-if ($QualityCount -eq 0) {
-    $QualityCount = ([regex]::Matches($QualityReport, '"severity"')).Count
-}
-
-Write-Info "-> Security Agent: Complete (found $SecurityCount issues)"
-Write-Info "-> Naming Agent: Complete (found $NamingCount issues)"
-Write-Info "-> Code Quality Agent: Complete (found $QualityCount issues)"
-
-# Run summarizer to aggregate results
-Write-Host ""
-Write-Info "Aggregating results from all agents..."
-Write-Info "-> Summarizer Agent: Deduplicating and prioritizing findings..."
-
+# Run summarizer
+Write-Info "Aggregating results..."
 $FinalReport = Invoke-SummarizerAgent -SecurityJson $SecurityReport -NamingJson $NamingReport -QualityJson $QualityReport
-
-Write-Info "-> Summarizer Agent: Complete"
-
-# Display per-agent results
-Write-Host ""
-Write-ColorOutput "============================================" 'Cyan'
-Write-ColorOutput "Review Results by Agent" 'Cyan'
-Write-ColorOutput "============================================" 'Cyan'
-
-Show-AgentResults -AgentReport $SecurityReport -AgentName "security" -AgentDisplay "Security"
-Show-AgentResults -AgentReport $NamingReport -AgentName "naming" -AgentDisplay "Naming"
-Show-AgentResults -AgentReport $QualityReport -AgentName "quality" -AgentDisplay "Code Quality"
-
-# Display final summary
-Write-Host ""
-Write-ColorOutput "============================================" 'Cyan'
-Write-ColorOutput "Final Summary" 'Cyan'
-Write-ColorOutput "============================================" 'Cyan'
-Write-Host ""
-
-# Helper function to extract JSON and issues from agent report
-function Get-AgentIssues {
-    param([string]$Report)
-    
-    $Issues = @()
-    $JsonContent = $null
-    
-    if ($Report -match '```json\s*([\s\S]*?)\s*```') {
-        $JsonContent = $Matches[1]
-    }
-    elseif ($Report -match '\{[\s\S]*"issues"[\s\S]*\}') {
-        $JsonContent = $Matches[0]
-    }
-    
-    if ($JsonContent) {
-        try {
-            $JsonObj = $JsonContent | ConvertFrom-Json -ErrorAction Stop
-            $Issues = @($JsonObj.issues)
-        }
-        catch { }
-    }
-    
-    return $Issues
-}
 
 # Collect all issues from all agents
 $AllIssues = @()
-$AllIssues += Get-AgentIssues -Report $SecurityReport
-$AllIssues += Get-AgentIssues -Report $NamingReport
-$AllIssues += Get-AgentIssues -Report $QualityReport
+$AllIssues += Get-AgentIssuesFromReport -AgentReport $SecurityReport
+$AllIssues += Get-AgentIssuesFromReport -AgentReport $NamingReport
+$AllIssues += Get-AgentIssuesFromReport -AgentReport $QualityReport
 
 # Count by severity
 $BlockIssues = @($AllIssues | Where-Object { $_.severity -in @('BLOCK', 'CRITICAL') })
@@ -631,60 +539,51 @@ $WarnCount = $WarnIssues.Count
 $InfoCount = $InfoIssues.Count
 $TotalCount = $AllIssues.Count
 
-Write-Info "Found $TotalCount total issues: $BlockCount BLOCK, $WarnCount WARN, $InfoCount INFO"
-Write-Host ""
-
 # Make commit decision based on BLOCK issues
 if ($BlockCount -gt 0) {
     Write-Host ""
     Write-ColorOutput "========================================================" 'Red'
-    Write-ColorOutput "  AI REVIEW: COMMIT BLOCKED                             " 'Red'
+    Write-ColorOutput "  COMMIT BLOCKED - $BlockCount Critical Issue(s) Found" 'Red'
     Write-ColorOutput "========================================================" 'Red'
     Write-Host ""
-    Write-Host "Found $BlockCount critical issue(s):"
-    Write-Host ""
     
-    # Display BLOCK issues
     $BlockIssues | ForEach-Object {
-        $severity = $_.severity
-        $file = $_.file
-        $line = $_.line
-        $message = $_.message
-        Write-Host "  [$severity] ${file}:${line}" -ForegroundColor Red
-        Write-Host "    $message"
-        Write-Host ""
+        Write-Host "  [BLOCK] $($_.file):$($_.line)" -ForegroundColor Red
+        Write-Host "    $($_.message)"
     }
     
-    Write-ColorOutput "Fix these issues or use 'git commit --no-verify' to bypass." 'Yellow'
-    Write-Host "Review details saved to: $LAST_REVIEW_FILE"
+    if ($WarnCount -gt 0) {
+        Write-Host ""
+        Write-Host "  + $WarnCount warning(s)" -ForegroundColor Yellow
+    }
+    if ($InfoCount -gt 0) {
+        Write-Host "  + $InfoCount info suggestion(s)" -ForegroundColor Gray
+    }
+    
+    Write-Host ""
+    Write-Host "To bypass: " -NoNewline
+    Write-Host "git commit --no-verify -m `"message`"" -ForegroundColor Cyan
     Write-Host ""
     exit 1
 }
 
-# Show warnings and info
-if ($WarnCount -gt 0 -or $InfoCount -gt 0) {
-    Write-Host ""
-    Write-Warning "Found $WarnCount warning(s) and $InfoCount info message(s):"
-    Write-Host ""
+# No blocking issues - show summary
+Write-Host ""
+if ($TotalCount -eq 0) {
+    Write-ColorOutput "[AI Review] No issues found. Commit allowed." 'Green'
+}
+else {
+    Write-ColorOutput "[AI Review] $WarnCount warning(s), $InfoCount suggestion(s). Commit allowed." 'Green'
+    
     if ($WarnCount -gt 0) {
-        $WarnIssues | Select-Object -First 5 | ForEach-Object {
-            Write-Host "  [$($_.severity)] $($_.file):$($_.line)" -ForegroundColor Yellow
-            Write-Host "    $($_.message)"
+        $WarnIssues | Select-Object -First 3 | ForEach-Object {
+            Write-Host "  [WARN] $($_.file):$($_.line) - $($_.message)" -ForegroundColor Yellow
         }
-    }
-    if ($InfoCount -gt 0) {
-        $InfoIssues | Select-Object -First 5 | ForEach-Object {
-            Write-Host "  [$($_.severity)] $($_.file):$($_.line)"
-            Write-Host "    $($_.message)"
+        if ($WarnCount -gt 3) {
+            Write-Host "  ... +$($WarnCount - 3) more warnings" -ForegroundColor Yellow
         }
-    }
-    if (($WarnCount + $InfoCount) -gt 10) {
-        Write-Host "  ... and more (see $LAST_REVIEW_FILE for details)"
     }
 }
 
-Write-Host ""
-Write-Success "Review complete. Allowing commit."
-Write-Host "Review details saved to: $LAST_REVIEW_FILE"
 Write-Host ""
 exit 0
